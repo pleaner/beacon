@@ -1,7 +1,7 @@
 import { ACTIVITIES, AREAS } from './constants'
 import { getSetting, getUserById, prunePositions } from './db'
-import { pushToRoles, pushToUser, type PushSender } from './push'
-import { findTripsToAlertOperators, findTripsToPrompt, markOperatorsAlerted, markOverdue } from './trips'
+import { helpPayload, pushToRoles, pushToUser, type PushSender } from './push'
+import { findHelpTripsToAlert, findTripsToAlertOperators, findTripsToPrompt, markOperatorsAlerted, markOverdue } from './trips'
 
 export const POSITION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -15,6 +15,7 @@ export async function runCron(env: Env, send: PushSender, now: number) {
   const graceMs = graceMinutes * 60_000
   let prompted = 0
   let alerted = 0
+  let helpAlerted = 0
 
   for (const trip of await findTripsToPrompt(db, now)) {
     try {
@@ -48,6 +49,19 @@ export async function runCron(env: Env, send: PushSender, now: number) {
     }
   }
 
+  for (const trip of await findHelpTripsToAlert(db)) {
+    try {
+      const user = await getUserById(db, trip.user_id)
+      const { sent } = await pushToRoles(db, send, ['operator', 'admin'], helpPayload({ name: user?.name ?? 'unknown' }, trip))
+      if (sent > 0) {
+        await markOperatorsAlerted(db, trip.id, now)
+        helpAlerted++
+      }
+    } catch (e) {
+      console.error('help alert failed', trip.id, String(e))
+    }
+  }
+
   const pruned = await prunePositions(db, now - POSITION_RETENTION_MS)
-  return { prompted, alerted, pruned }
+  return { prompted, alerted, helpAlerted, pruned }
 }

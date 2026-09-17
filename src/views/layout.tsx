@@ -28,7 +28,11 @@ export const Layout: FC<Props> = ({ title, user, bodyAttrs = {}, children }) => 
             {user && !isOps && <a href="/profile">Profile</a>}
             {isOps && <a href="/board">Board</a>}
             {user?.role === 'admin' && <a href="/admin">Admin</a>}
-            {isOps && <a href="/logout">Log out</a>}
+            {isOps && (
+              <form method="post" action="/logout">
+                <button class="linklike" type="submit">Log out</button>
+              </form>
+            )}
           </nav>
         </header>
         <main>{children}</main>

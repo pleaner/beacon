@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
 import { addSubscription, insertPosition, listPositions, setSetting } from '../src/lib/db'
 import { runCron } from '../src/lib/cron'
-import { getTrip, startTrip, type NewTrip } from '../src/lib/trips'
+import { getTrip, requestHelp, startTrip, type NewTrip } from '../src/lib/trips'
 import { fakeSender, makeExplorer, makeOperator } from './helpers'
 
 const base: NewTrip = {
@@ -83,6 +83,35 @@ describe('runCron', () => {
     expect((await getTrip(env.DB, a.t.id))?.status).toBe('overdue')
     expect((await getTrip(env.DB, tb.id))?.status).toBe('overdue')
     expect(f.sent.map((s) => s.endpoint)).toEqual(['https://push.test/b'])
+  })
+
+  it('leaves a help trip unalerted when no operator has a subscription', async () => {
+    const e = await makeExplorer()
+    const t = await startTrip(env.DB, e.user.id, base, 1000)
+    await requestHelp(env.DB, t.id, 1000)
+    const f = fakeSender()
+    const r = await runCron(env, f.send, 2000)
+    expect(r.helpAlerted).toBe(0)
+    expect((await getTrip(env.DB, t.id))?.operators_alerted_at).toBeNull()
+  })
+
+  it('pushes a help trip once an operator subscribes, then stops', async () => {
+    const e = await makeExplorer({ name: 'Zola' })
+    const t = await startTrip(env.DB, e.user.id, base, 1000)
+    await requestHelp(env.DB, t.id, 1000)
+    const f = fakeSender()
+    let r = await runCron(env, f.send, 2000)
+    expect(r.helpAlerted).toBe(0)
+    const o = await makeOperator()
+    await addSubscription(env.DB, o.user.id, { endpoint: 'https://push.test/help-op', p256dh: 'k', auth: 'a' })
+    r = await runCron(env, f.send, 3000)
+    expect(r.helpAlerted).toBe(1)
+    const push = f.sent.find((s) => s.endpoint === 'https://push.test/help-op')
+    expect(push?.payload.title).toBe('HELP: Zola')
+    expect((await getTrip(env.DB, t.id))?.operators_alerted_at).toBe(3000)
+    r = await runCron(env, f.send, 4000)
+    expect(r.helpAlerted).toBe(0)
+    expect(f.sent.filter((s) => s.endpoint === 'https://push.test/help-op')).toHaveLength(1)
   })
 
   it('prunes positions older than 30 days', async () => {

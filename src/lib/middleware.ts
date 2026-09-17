@@ -33,7 +33,10 @@ export type Body = Record<string, string | File>
 
 export async function readBody(c: Context): Promise<Body> {
   const ct = c.req.header('content-type') ?? ''
-  if (ct.includes('application/json')) return (await c.req.json()) as Body
+  if (ct.includes('application/json')) {
+    const parsed = await c.req.json().catch(() => null)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Body) : {}
+  }
   return (await c.req.parseBody({ all: true })) as Body
 }
 

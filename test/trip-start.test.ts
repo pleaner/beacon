@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
 import { getOpenTrip, parseReturnBy, startTrip, type NewTrip } from '../src/lib/trips'
-import { cookieFor, makeExplorer } from './helpers'
+import { cookieFor, makeAdmin, makeExplorer, makeOperator } from './helpers'
 
 const BASE = 'https://beacon.test'
 const json = (cookie: string, body: object) => ({
@@ -46,6 +46,20 @@ describe('GET /', () => {
     await startTrip(env.DB, e.user.id, t, Date.now())
     const res = await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(e.token) }, redirect: 'manual' })
     expect(res.headers.get('location')).toBe('/trip')
+  })
+
+  it('redirects a signed-in operator to /board', async () => {
+    const o = await makeOperator()
+    const res = await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/board')
+  })
+
+  it('redirects a signed-in admin to /board', async () => {
+    const a = await makeAdmin()
+    const res = await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(a.token) }, redirect: 'manual' })
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/board')
   })
 })
 

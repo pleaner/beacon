@@ -67,6 +67,12 @@ describe('GET /trip', () => {
     expect(html).toContain(`action="/api/trips/${t.id}/cancel"`)
     expect(html).toContain('data-trip-status="help"')
   })
+
+  it('renders an error passed on the query string in a red banner', async () => {
+    const { cookie } = await live()
+    const html = await (await call('/trip?error=Pick%20a%20time', { cookie })).text()
+    expect(html).toContain('<div class="banner red">Pick a time</div>')
+  })
 })
 
 describe('extend and back', () => {
@@ -99,6 +105,26 @@ describe('extend and back', () => {
     expect(res.status).toBe(404)
   })
 
+  it('extends by minutes via a form (the select path the view uses) and redirects', async () => {
+    const { t, cookie } = await live()
+    const before = (await getTrip(env.DB, t.id))!.return_by
+    const res = await call(`/api/trips/${t.id}/extend`, {
+      cookie, method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ minutes: '60' }),
+    })
+    expect(res.status).toBe(303)
+    expect(res.headers.get('location')).toBe('/trip')
+    expect((await getTrip(env.DB, t.id))!.return_by).toBeGreaterThan(before)
+  })
+
+  it('a form-encoded extend with a past time redirects to /trip with the error on the query string', async () => {
+    const { t, cookie } = await live()
+    const res = await call(`/api/trips/${t.id}/extend`, {
+      cookie, method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ return_by: '2000-01-01T09:30' }),
+    })
+    expect(res.status).toBe(303)
+    expect(res.headers.get('location')).toBe('/trip?error=Pick%20a%20time%20in%20the%20future')
+  })
+
   it('back closes as safe', async () => {
     const { t, cookie } = await live()
     const res = await call(`/api/trips/${t.id}/back`, { cookie, method: 'POST' })
@@ -129,6 +155,16 @@ describe('help and cancel', () => {
     expect(f.sent).toHaveLength(1)
   })
 
+  it('marks operators alerted once the push reaches a subscribed operator', async () => {
+    const { t, cookie } = await live()
+    const o = await makeOperator()
+    await addSubscription(env.DB, o.user.id, { endpoint: 'https://push.test/alerted', p256dh: 'k', auth: 'a' })
+    setSenderForTests(fakeSender().send)
+    const res = await call(`/api/trips/${t.id}/help`, { cookie, ...json({}) })
+    expect(res.status).toBe(200)
+    expect((await getTrip(env.DB, t.id))!.operators_alerted_at).not.toBeNull()
+  })
+
   it('cancel closes as cancelled', async () => {
     const { t, cookie } = await live()
     setSenderForTests(fakeSender().send)
@@ -142,8 +178,9 @@ describe('help and cancel', () => {
 describe('positions', () => {
   it('stores a batch for the owner of an open trip', async () => {
     const { t, cookie } = await live()
+    const recent = Date.now() - 30_000
     const res = await call(`/api/trips/${t.id}/positions`, { cookie, ...json([
-      { lat: -34.1, lng: 18.4, accuracy: 5, battery: 60, at: 1000 },
+      { lat: -34.1, lng: 18.4, accuracy: 5, battery: 60, at: recent },
       { lat: -34.2, lng: 18.5 },
     ]) })
     expect(res.status).toBe(200)
@@ -151,7 +188,21 @@ describe('positions', () => {
     const list = await listPositions(env.DB, t.id)
     expect(list).toHaveLength(2)
     expect(list[1].battery).toBe(60)
-    expect(list[0].at).toBeGreaterThan(1000)
+    expect(list[0].at).toBeGreaterThan(recent)
+  })
+
+  it('clamps a future timestamp to now and drops one over an hour stale', async () => {
+    const { t, cookie } = await live()
+    const now = Date.now()
+    const res = await call(`/api/trips/${t.id}/positions`, { cookie, ...json([
+      { lat: -34.1, lng: 18.4, at: now + 60_000 },
+      { lat: -34.2, lng: 18.5, at: now - 2 * 60 * 60_000 },
+    ]) })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true, saved: 1 })
+    const list = await listPositions(env.DB, t.id)
+    expect(list).toHaveLength(1)
+    expect(list[0].at).toBeLessThan(now + 60_000)
   })
 
   it('rejects bad payloads, closed trips, and other users', async () => {

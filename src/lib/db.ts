@@ -152,6 +152,11 @@ export async function insertPosition(db: DB, p: Omit<Position, 'id'>) {
   await db.prepare('INSERT INTO positions (trip_id, lat, lng, accuracy, battery, at) VALUES (?,?,?,?,?,?)')
     .bind(p.trip_id, p.lat, p.lng, p.accuracy, p.battery, p.at).run()
 }
+export async function insertPositions(db: DB, rows: Array<Omit<Position, 'id'>>): Promise<void> {
+  if (rows.length === 0) return
+  const stmt = db.prepare('INSERT INTO positions (trip_id, lat, lng, accuracy, battery, at) VALUES (?,?,?,?,?,?)')
+  await db.batch(rows.map((p) => stmt.bind(p.trip_id, p.lat, p.lng, p.accuracy, p.battery, p.at)))
+}
 export async function listPositions(db: DB, tripId: string, limit = 50): Promise<Position[]> {
   return (await db.prepare('SELECT * FROM positions WHERE trip_id = ? ORDER BY at DESC LIMIT ?').bind(tripId, limit).all<Position>()).results
 }

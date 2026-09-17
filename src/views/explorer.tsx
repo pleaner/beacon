@@ -105,8 +105,9 @@ export const NewTripForm: FC<{
 const fmtTime = (ms: number) =>
   new Date(ms).toLocaleString('en-ZA', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg' })
 
-export const ActiveTrip: FC<{ trip: Trip }> = ({ trip }) => (
+export const ActiveTrip: FC<{ trip: Trip; error?: string }> = ({ trip, error }) => (
   <>
+    {error && <div class="banner red">{error}</div>}
     {trip.status === 'overdue' && (
       <div class="banner red">
         <strong>Are you okay?</strong> You're past your return time. Tell us below, or SARZA will start checking on you.
@@ -138,8 +139,9 @@ export const ActiveTrip: FC<{ trip: Trip }> = ({ trip }) => (
   </>
 )
 
-export const HelpScreen: FC<{ trip: Trip; emergency: string }> = ({ trip, emergency }) => (
+export const HelpScreen: FC<{ trip: Trip; emergency: string; error?: string }> = ({ trip, emergency, error }) => (
   <>
+    {error && <div class="banner red">{error}</div>}
     <div class="banner red"><strong>SARZA has been alerted.</strong></div>
     <h1>Stay where you are</h1>
     <p>Keep your phone on and this screen open if you can. We send your position every 30 seconds while it's open.</p>

@@ -35,6 +35,22 @@ describe('users', () => {
     await deleteUser(env.DB, b.user.id)
     expect(await getUserById(env.DB, b.user.id)).toBeNull()
   })
+
+  it('deleting a user cascades to their trips, positions, and push subscriptions', async () => {
+    const { user } = await makeExplorer()
+    const tripId = crypto.randomUUID()
+    await env.DB.prepare(
+      "INSERT INTO trips (id,user_id,activity,area,start_at,return_by,status,created_at) VALUES (?,?,?,?,?,?,?,?)",
+    ).bind(tripId, user.id, 'hike', 'other', 1000, 5000, 'active', 1000).run()
+    await insertPosition(env.DB, { trip_id: tripId, lat: -33.9, lng: 18.4, accuracy: null, battery: null, at: 1000 })
+    await addSubscription(env.DB, user.id, { endpoint: 'https://p/cascade', p256dh: 'k', auth: 'a' })
+
+    await deleteUser(env.DB, user.id)
+
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM trips WHERE user_id = ?').bind(user.id).first<{ n: number }>())?.n).toBe(0)
+    expect(await listPositions(env.DB, tripId)).toHaveLength(0)
+    expect(await listSubscriptionsForUser(env.DB, user.id)).toHaveLength(0)
+  })
 })
 
 describe('settings and checklists', () => {

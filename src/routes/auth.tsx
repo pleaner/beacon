@@ -1,3 +1,4 @@
+import type { Context } from 'hono'
 import { Hono } from 'hono'
 import { deleteCookie, setCookie } from 'hono/cookie'
 import type { AppEnv } from '../env'
@@ -34,9 +35,8 @@ auth.post('/auth/link', async (c) => {
   return c.html(<Layout title="Check your email" user={null}><LinkSent /></Layout>)
 })
 
-auth.get('/auth/verify', async (c) => {
-  const t = c.req.query('t') ?? ''
-  const userId = await verifyMagicLink(c.env.SESSION_SECRET, t, Date.now())
+async function finishVerify(c: Context<AppEnv>, token: string) {
+  const userId = await verifyMagicLink(c.env.SESSION_SECRET, token, Date.now())
   const user = userId ? await getUserById(c.env.DB, userId) : null
   if (!user || !isOps(user.role)) {
     return c.html(<Layout title="Sign in" user={null}><Login error="That link has expired. Ask for a new one." /></Layout>, 400)
@@ -45,9 +45,23 @@ auth.get('/auth/verify', async (c) => {
   await setUserTokenHash(c.env.DB, user.id, await hashToken(session))
   setCookie(c, COOKIE_NAME, session, { httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: COOKIE_MAX_AGE })
   return c.redirect('/board')
+}
+
+auth.get('/auth/verify', async (c) => finishVerify(c, c.req.query('t') ?? ''))
+
+auth.post('/auth/verify', async (c) => {
+  const link = str(await readBody(c), 'link') ?? ''
+  let token = link
+  try {
+    const url = new URL(link)
+    token = url.searchParams.get('t') ?? link
+  } catch {
+    // not a URL, treat the whole string as the token
+  }
+  return finishVerify(c, token)
 })
 
-auth.get('/logout', async (c) => {
+auth.post('/logout', async (c) => {
   if (c.var.user) await updateUser(c.env.DB, c.var.user.id, { token_hash: null })
   deleteCookie(c, COOKIE_NAME, { path: '/' })
   return c.redirect('/login')

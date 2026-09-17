@@ -2,7 +2,7 @@ import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
 import worker from '../src/index'
-import { hashToken } from '../src/lib/auth'
+import { hashToken, signMagicLink } from '../src/lib/auth'
 import { getUserByTokenHash } from '../src/lib/db'
 import { lastMagicLinkForTests } from '../src/lib/email'
 import { cookieFor, makeExplorer, makeOperator } from './helpers'
@@ -74,16 +74,40 @@ describe('login flow', () => {
     expect(await res.text()).toContain('expired')
   })
 
+  it('rejects a validly signed link for an explorer, and sets no cookie', async () => {
+    const e = await makeExplorer()
+    const token = await signMagicLink(env.SESSION_SECRET, e.user.id, Date.now() + 60_000)
+    const res = await exports.default.fetch(`${BASE}/auth/verify?t=${token}`, { redirect: 'manual' })
+    expect(res.status).toBe(400)
+    expect(res.headers.get('set-cookie')).toBeNull()
+  })
+
+  it('signs in from the pasted-link form (POST /auth/verify)', async () => {
+    const o = await makeOperator({ email: 'paste@sarza.test' })
+    await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'paste@sarza.test' }))
+    const link = lastMagicLinkForTests()!
+    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: link.url }))
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/board')
+    const token = (res.headers.get('set-cookie') ?? '').match(/beacon=([^;]+)/)![1]
+    expect((await getUserByTokenHash(env.DB, await hashToken(token)))?.id).toBe(o.user.id)
+  })
+
+  it('rejects garbage pasted into the link form', async () => {
+    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: 'not a link or token' }))
+    expect(res.status).toBe(400)
+  })
+
   it('logout clears the cookie', async () => {
     const o = await makeOperator()
-    const res = await exports.default.fetch(`${BASE}/logout`, { headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
+    const res = await exports.default.fetch(`${BASE}/logout`, { method: 'POST', headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
     expect(res.headers.get('location')).toBe('/login')
     expect(res.headers.get('set-cookie')).toMatch(/beacon=;|Max-Age=0/)
   })
 
   it('logout revokes the token, so the old cookie no longer signs anyone in', async () => {
     const o = await makeOperator()
-    await exports.default.fetch(`${BASE}/logout`, { headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
+    await exports.default.fetch(`${BASE}/logout`, { method: 'POST', headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
     const res = await exports.default.fetch(`${BASE}/login`, { headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
     expect(res.status).toBe(200)
     expect(await res.text()).toContain('name="email"')

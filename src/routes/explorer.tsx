@@ -10,8 +10,10 @@ import { ActiveTrip, Home, HelpScreen, NewTripForm, ProfileForm } from '../views
 
 export const explorer = new Hono<AppEnv>()
 
-explorer.get('/', requireRole('explorer'), async (c) => {
-  const user = c.var.user!
+explorer.get('/', async (c) => {
+  const user = c.var.user
+  if (!user) return c.redirect('/profile')
+  if (user.role === 'operator' || user.role === 'admin') return c.redirect('/board')
   if (await getOpenTrip(c.env.DB, user.id)) return c.redirect('/trip')
   const last = await lastTripForUser(c.env.DB, user.id)
   return c.html(
@@ -25,8 +27,9 @@ explorer.get('/trip', requireRole('explorer'), async (c) => {
   const user = c.var.user!
   const trip = await getOpenTrip(c.env.DB, user.id)
   if (!trip) return c.redirect('/')
+  const error = c.req.query('error')
   const attrs = { 'data-trip-id': trip.id, 'data-trip-status': trip.status, 'data-vapid': c.env.VAPID_PUBLIC_KEY, 'data-emergency': c.env.EMERGENCY_PHONE }
-  const inner = trip.status === 'help' ? <HelpScreen trip={trip} emergency={c.env.EMERGENCY_PHONE} /> : <ActiveTrip trip={trip} />
+  const inner = trip.status === 'help' ? <HelpScreen trip={trip} emergency={c.env.EMERGENCY_PHONE} error={error} /> : <ActiveTrip trip={trip} error={error} />
   return c.html(<Layout title="Your trip" user={user} bodyAttrs={attrs}>{inner}</Layout>)
 })
 

@@ -64,6 +64,7 @@
           try {
             const res = await fetch(`/api/trips/${tripId}/positions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(queue) })
             if (res.ok) queue.length = 0
+            if (res.status === 409) { clearInterval(intervalId); location.reload() }
           } catch {}
         },
         () => {},
@@ -71,7 +72,7 @@
       )
     }
     ping()
-    setInterval(ping, every)
+    const intervalId = setInterval(ping, every)
 
     const slider = $('[data-help-slider] input')
     if (slider) {

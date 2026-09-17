@@ -14,7 +14,7 @@ export async function savePhoto(bucket: R2Bucket, userId: string, file: File | s
   if (!file || typeof file === 'string' || file.size === 0) return null
   if (file.size > MAX_BYTES) throw new Error('Photo too large')
   const ext = ALLOWED_TYPES[file.type]
-  if (!ext) throw new Error('Photo must be a JPEG, PNG, or WebP image')
+  if (!ext) throw new Error('Photo must be a JPEG, PNG, WebP, or HEIC image')
   const key = `users/${userId}/${crypto.randomUUID()}.${ext}`
   await bucket.put(key, file.stream(), { httpMetadata: { contentType: file.type } })
   return key

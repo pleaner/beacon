@@ -140,7 +140,11 @@ export function markOverdue(db: DB, id: string, now: number) {
   )
 }
 export function markOperatorsAlerted(db: DB, id: string, now: number) {
-  return changed(db.prepare(`UPDATE trips SET operators_alerted_at = ? WHERE id = ? AND status = 'overdue' AND operators_alerted_at IS NULL`).bind(now, id))
+  return changed(
+    db
+      .prepare(`UPDATE trips SET operators_alerted_at = ? WHERE id = ? AND status IN ('overdue','help') AND operators_alerted_at IS NULL`)
+      .bind(now, id),
+  )
 }
 
 // cron queries
@@ -155,6 +159,9 @@ export async function findTripsToAlertOperators(db: DB, now: number, graceMs: nu
       .bind(now - graceMs)
       .all<Trip>()
   ).results
+}
+export async function findHelpTripsToAlert(db: DB): Promise<Trip[]> {
+  return (await db.prepare(`SELECT * FROM trips WHERE status = 'help' AND operators_alerted_at IS NULL`).all<Trip>()).results
 }
 
 // board
