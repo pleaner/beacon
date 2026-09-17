@@ -6,7 +6,7 @@ import { requireRole } from '../lib/middleware'
 import { canSeePhoto } from '../lib/photos'
 import { getOpenTrip, lastTripForUser, previousShoePhotos } from '../lib/trips'
 import { Layout } from '../views/layout'
-import { Home, NewTripForm, ProfileForm } from '../views/explorer'
+import { ActiveTrip, Home, HelpScreen, NewTripForm, ProfileForm } from '../views/explorer'
 
 export const explorer = new Hono<AppEnv>()
 
@@ -14,7 +14,20 @@ explorer.get('/', requireRole('explorer'), async (c) => {
   const user = c.var.user!
   if (await getOpenTrip(c.env.DB, user.id)) return c.redirect('/trip')
   const last = await lastTripForUser(c.env.DB, user.id)
-  return c.html(<Layout title="Home" user={user}><Home user={user} last={last} welcome={c.req.query('welcome') === '1'} /></Layout>)
+  return c.html(
+    <Layout title="Home" user={user} bodyAttrs={{ 'data-vapid': c.env.VAPID_PUBLIC_KEY }}>
+      <Home user={user} last={last} welcome={c.req.query('welcome') === '1'} />
+    </Layout>,
+  )
+})
+
+explorer.get('/trip', requireRole('explorer'), async (c) => {
+  const user = c.var.user!
+  const trip = await getOpenTrip(c.env.DB, user.id)
+  if (!trip) return c.redirect('/')
+  const attrs = { 'data-trip-id': trip.id, 'data-trip-status': trip.status, 'data-vapid': c.env.VAPID_PUBLIC_KEY, 'data-emergency': c.env.EMERGENCY_PHONE }
+  const inner = trip.status === 'help' ? <HelpScreen trip={trip} emergency={c.env.EMERGENCY_PHONE} /> : <ActiveTrip trip={trip} />
+  return c.html(<Layout title="Your trip" user={user} bodyAttrs={attrs}>{inner}</Layout>)
 })
 
 explorer.get('/trip/new', requireRole('explorer'), async (c) => {

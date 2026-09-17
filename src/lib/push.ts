@@ -52,3 +52,11 @@ export async function pushToUser(db: D1Database, send: PushSender, userId: strin
 export async function pushToRoles(db: D1Database, send: PushSender, roles: Role[], payload: PushPayload) {
   return pushToSubs(db, send, await listSubscriptionsForRoles(db, roles), payload)
 }
+
+let senderOverride: PushSender | null = null
+export function setSenderForTests(s: PushSender | null) {
+  senderOverride = s
+}
+export function getSender(env: Env): PushSender {
+  return senderOverride ?? webPushSender(env)
+}

@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import { ACTIVITIES, AREAS, type Activity } from '../lib/constants'
+import { ACTIVITIES, AREAS, EXTEND_OPTIONS_MINUTES, type Activity } from '../lib/constants'
 import type { User } from '../lib/db'
 import { toLocalInput, type Trip } from '../lib/trips'
 
@@ -100,4 +100,53 @@ export const NewTripForm: FC<{
     <button class="btn ok" type="submit">Start trip</button>
     <p class="muted">Only "Back by" is required. We'll ask if you're okay when that time passes.</p>
   </form>
+)
+
+const fmtTime = (ms: number) =>
+  new Date(ms).toLocaleString('en-ZA', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg' })
+
+export const ActiveTrip: FC<{ trip: Trip }> = ({ trip }) => (
+  <>
+    {trip.status === 'overdue' && (
+      <div class="banner red">
+        <strong>Are you okay?</strong> You're past your return time. Tell us below, or SARZA will start checking on you.
+      </div>
+    )}
+    <h1>{ACTIVITIES[trip.activity]} in {AREAS[trip.area]}</h1>
+    <p class="muted">Back by</p>
+    <div class="big">{fmtTime(trip.return_by)}</div>
+    <form method="post" action={`/api/trips/${trip.id}/back`}>
+      <button class="btn ok" type="submit">I'm back</button>
+    </form>
+    <form method="post" action={`/api/trips/${trip.id}/extend`}>
+      <label>Extend</label>
+      <select name="minutes">
+        {EXTEND_OPTIONS_MINUTES.map((m) => (
+          <option value={m}>{m < 60 ? `${m} minutes` : `${m / 60} hour${m > 60 ? 's' : ''}`} from now</option>
+        ))}
+      </select>
+      <label>Or pick a new time</label>
+      <input name="return_by" type="datetime-local" />
+      <button class="btn quiet" type="submit">Extend</button>
+    </form>
+    <div class="slider" data-help-slider>
+      <input type="range" min="0" max="100" value="0" aria-label="Slide to call for help" />
+      <span>Slide to call for help</span>
+    </div>
+    <p id="help-status" class="muted"></p>
+    <p class="muted">While this screen is open we send your position every two minutes. Lock your phone and it stops.</p>
+  </>
+)
+
+export const HelpScreen: FC<{ trip: Trip; emergency: string }> = ({ trip, emergency }) => (
+  <>
+    <div class="banner red"><strong>SARZA has been alerted.</strong></div>
+    <h1>Stay where you are</h1>
+    <p>Keep your phone on and this screen open if you can. We send your position every 30 seconds while it's open.</p>
+    <a class="btn red" href={`tel:${emergency}`}>Phone SARZA {emergency}</a>
+    <p class="muted">Trip: {ACTIVITIES[trip.activity]} in {AREAS[trip.area]}.</p>
+    <form method="post" action={`/api/trips/${trip.id}/cancel`}>
+      <button class="btn quiet" type="submit">Cancel, I'm fine</button>
+    </form>
+  </>
 )
