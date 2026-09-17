@@ -11,5 +11,6 @@
     "skipLibCheck": true,
     "types": ["./worker-configuration.d.ts", "@cloudflare/vitest-plugin"]
   },
+  // vitest.config.ts is excluded: it runs under Node, and Node's globals collide with the Workers types above.
   "include": ["src", "test"]
 }
