@@ -3,6 +3,7 @@ import type { AppEnv } from './env'
 import { runCron } from './lib/cron'
 import { loadUser } from './lib/middleware'
 import { webPushSender } from './lib/push'
+import { admin } from './routes/admin'
 import { api } from './routes/api'
 import { auth } from './routes/auth'
 import { board } from './routes/board'
@@ -16,6 +17,7 @@ app.route('/api', api)
 app.route('/', auth)
 app.route('/', board)
 app.route('/', explorer)
+app.route('/', admin)
 
 export default {
   fetch: app.fetch,
