@@ -4,6 +4,7 @@ import { runCron } from './lib/cron'
 import { loadUser } from './lib/middleware'
 import { webPushSender } from './lib/push'
 import { api } from './routes/api'
+import { auth } from './routes/auth'
 import { explorer } from './routes/explorer'
 
 const app = new Hono<AppEnv>()
@@ -11,6 +12,7 @@ app.use(loadUser)
 
 app.get('/health', (c) => c.text('ok'))
 app.route('/api', api)
+app.route('/', auth)
 app.route('/', explorer)
 
 export default {
