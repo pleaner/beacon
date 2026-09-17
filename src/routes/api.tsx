@@ -30,16 +30,26 @@ api.post('/profile', async (c) => {
     consent_contact: body.consent_contact ? 1 : 0,
   }
   if (user) {
-    const photo_key = await savePhoto(c.env.PHOTOS, user.id, body.photo)
-    await updateUser(c.env.DB, user.id, photo_key ? { ...fields, photo_key } : fields)
-    return done(c, { id: user.id }, '/profile?saved=1')
+    try {
+      const photo_key = await savePhoto(c.env.PHOTOS, user.id, body.photo)
+      await updateUser(c.env.DB, user.id, photo_key ? { ...fields, photo_key } : fields)
+      return done(c, { id: user.id }, '/profile?saved=1')
+    } catch (e) {
+      const error = (e as Error).message
+      return wantsJson(c) ? c.json({ error }, 400) : c.html(<Layout title="Profile" user={user}><ProfileForm user={user} error={error} /></Layout>, 400)
+    }
   }
   const token = newToken()
   const created = await createUser(c.env.DB, {
     role: 'explorer', organisation: null, photo_key: null, ...fields, token_hash: await hashToken(token),
   })
-  const photo_key = await savePhoto(c.env.PHOTOS, created.id, body.photo)
-  if (photo_key) await updateUser(c.env.DB, created.id, { photo_key })
   setCookie(c, COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: COOKIE_MAX_AGE })
-  return done(c, { id: created.id }, '/?welcome=1')
+  try {
+    const photo_key = await savePhoto(c.env.PHOTOS, created.id, body.photo)
+    if (photo_key) await updateUser(c.env.DB, created.id, { photo_key })
+    return done(c, { id: created.id }, '/?welcome=1')
+  } catch (e) {
+    const error = (e as Error).message
+    return wantsJson(c) ? c.json({ error }, 400) : c.html(<Layout title="Profile" user={created}><ProfileForm user={created} error={error} /></Layout>, 400)
+  }
 })

@@ -19,6 +19,10 @@ explorer.get('/photos/*', requireRole('explorer', 'operator', 'admin'), async (c
   const obj = await c.env.PHOTOS.get(key)
   if (!obj) return c.text('Not found', 404)
   return new Response(obj.body, {
-    headers: { 'content-type': obj.httpMetadata?.contentType ?? 'image/jpeg', 'cache-control': 'private, max-age=86400' },
+    headers: {
+      'content-type': obj.httpMetadata?.contentType ?? 'image/jpeg',
+      'cache-control': 'private, max-age=86400',
+      'x-content-type-options': 'nosniff',
+    },
   })
 })

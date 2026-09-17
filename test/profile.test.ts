@@ -74,6 +74,32 @@ describe('POST /api/profile', () => {
     expect((await res.json<{ error: string }>()).error).toContain('phone')
   })
 
+  it('rejects an oversized photo but still signs in the new explorer', async () => {
+    const photo = new File([new Uint8Array(9 * 1024 * 1024)], 'me.jpg', { type: 'image/jpeg' })
+    const res = await exports.default.fetch(`${BASE}/api/profile`, {
+      method: 'POST',
+      body: form({ name: 'Big', phone: '+27821111111', photo }),
+    })
+    expect(res.status).toBe(400)
+    const cookie = res.headers.get('set-cookie') ?? ''
+    expect(cookie).toContain('beacon=')
+    const token = cookie.match(/beacon=([^;]+)/)![1]
+    const user = await getUserByTokenHash(env.DB, await hashToken(token))
+    expect(user?.name).toBe('Big')
+    expect(user?.photo_key).toBeNull()
+  })
+
+  it('rejects a non-image photo and writes nothing to R2', async () => {
+    const photo = new File([new Uint8Array([1, 2, 3])], 'x.html', { type: 'text/html' })
+    const res = await exports.default.fetch(`${BASE}/api/profile`, {
+      method: 'POST',
+      body: form({ name: 'Hax', phone: '+27822222222', photo }),
+    })
+    expect(res.status).toBe(400)
+    const list = await env.PHOTOS.list()
+    expect(list.objects.length).toBe(0)
+  })
+
   it('updates an existing explorer without touching the cookie', async () => {
     const e = await makeExplorer({ name: 'Old' })
     const res = await exports.default.fetch(`${BASE}/api/profile`, {
@@ -105,5 +131,11 @@ describe('GET /photos/*', () => {
     expect(res.status).toBe(200)
     res = await exports.default.fetch(`${BASE}/photos/users/${a.user.id}/missing.jpg`, { headers: { cookie: cookieFor(a.token) } })
     expect(res.status).toBe(404)
+  })
+
+  it('redirects anonymous to /profile', async () => {
+    const res = await exports.default.fetch(`${BASE}/photos/users/x/y.jpg`, { redirect: 'manual' })
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/profile')
   })
 })
