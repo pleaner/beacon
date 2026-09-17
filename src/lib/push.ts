@@ -1,4 +1,4 @@
-import { buildPushPayload } from '@block65/webcrypto-web-push'
+import { buildPushPayload, type PushMessage } from '@block65/webcrypto-web-push'
 import { deleteSubscription, listSubscriptionsForRoles, listSubscriptionsForUser, type PushSub, type Role } from './db'
 
 export interface PushPayload {
@@ -15,7 +15,9 @@ export function webPushSender(env: Env): PushSender {
   const vapid = { subject: env.VAPID_SUBJECT, publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY }
   return async (sub, payload) => {
     const built = await buildPushPayload(
-      { data: payload, options: { ttl: 3600, urgency: 'high' } },
+      // PushPayload's optional fields make it structurally incompatible with the library's strict
+      // Jsonifiable index signature; the shape is plain JSON, so assert it rather than loosen the type.
+      { data: payload as unknown as PushMessage['data'], options: { ttl: 3600, urgency: 'high' } },
       { endpoint: sub.endpoint, expirationTime: null, keys: { p256dh: sub.p256dh, auth: sub.auth } },
       vapid,
     )
