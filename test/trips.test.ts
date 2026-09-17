@@ -1,18 +1,11 @@
-import { reset } from 'cloudflare:test'
-import { applyD1Migrations } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   cancelHelp, extendTrip, findTripsToAlertOperators, findTripsToPrompt, getOpenTrip, getTrip,
   lastTripForUser, listOpenTrips, markBack, markOperatorsAlerted, markOverdue, operatorClose,
   previousShoePhotos, requestHelp, startTrip, TripOpenError, type NewTrip,
 } from '../src/lib/trips'
 import { makeExplorer } from './helpers'
-
-afterEach(async () => {
-  await reset()
-  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS)
-})
 
 const base: NewTrip = {
   activity: 'hike', area: 'table_mountain', route_text: 'Platteklip', companions_text: null,
