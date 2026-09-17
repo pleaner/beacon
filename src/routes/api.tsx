@@ -8,7 +8,7 @@ import { addSubscription, createUser, getChecklist, insertPosition, updateUser }
 import { done, num, readBody, requireApiRole, str, wantsJson } from '../lib/middleware'
 import { savePhoto } from '../lib/photos'
 import { getSender, pushToRoles } from '../lib/push'
-import { cancelHelp, extendTrip, getTrip, markBack, parseReturnBy, previousShoePhotos, requestHelp, startTrip, TripOpenError, type Trip } from '../lib/trips'
+import { cancelHelp, extendTrip, getTrip, markBack, operatorClose, parseReturnBy, previousShoePhotos, requestHelp, startTrip, TripOpenError, type Trip } from '../lib/trips'
 import { Layout } from '../views/layout'
 import { NewTripForm, ProfileForm } from '../views/explorer'
 
@@ -177,6 +177,11 @@ api.post('/trips/:id/positions', requireApiRole('explorer'), async (c) => {
   }
   for (const r of rows) await insertPosition(c.env.DB, r)
   return c.json({ ok: true, saved: rows.length })
+})
+
+api.post('/board/trips/:id/close', requireApiRole('operator', 'admin'), async (c) => {
+  if (!(await operatorClose(c.env.DB, c.req.param('id'), Date.now()))) return c.json({ error: 'Trip is already closed' }, 409)
+  return done(c, { ok: true }, '/board')
 })
 
 api.post('/push/subscribe', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
