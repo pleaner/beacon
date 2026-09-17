@@ -96,9 +96,9 @@ test/*.test.ts               one file per lib and per route file
     "deploy:staging": "wrangler deploy --env staging",
     "test": "vitest run",
     "types": "wrangler types",
-    "migrate:local": "wrangler d1 migrations apply beacon --local",
-    "migrate:staging": "wrangler d1 migrations apply beacon --env staging --remote",
-    "migrate:prod": "wrangler d1 migrations apply beacon --remote"
+    "migrate:local": "wrangler d1 migrations apply DB --local",
+    "migrate:staging": "wrangler d1 migrations apply DB --env staging --remote",
+    "migrate:prod": "wrangler d1 migrations apply DB --remote"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^2.0.0",
