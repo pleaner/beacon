@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sarza-beacon",
+  "main": "src/index.tsx",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  "triggers": { "crons": ["* * * * *"] },
+  // Custom domain on the pleaner.com zone. Cloudflare creates the DNS record and cert on deploy.
+  "routes": [{ "pattern": "beacon.pleaner.com", "custom_domain": true }],
+  "vars": {
+    "APP_URL": "https://beacon.pleaner.com",
+    "EMAIL_FROM": "SARZA Beacon <noreply@mybestlife.live>",
+    "EMERGENCY_PHONE": "+27219370300",
+    "VAPID_SUBJECT": "mailto:noreply@mybestlife.live"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "beacon", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
+  ],
+  "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "beacon-photos" }],
+  "observability": { "enabled": true },
+  "env": {
+    "staging": {
+      "name": "sarza-beacon-staging",
+      "routes": [],
+      "vars": {
+        "APP_URL": "https://sarza-beacon-staging.workers.dev",
+        "EMAIL_FROM": "SARZA Beacon <noreply@mybestlife.live>",
+        "EMERGENCY_PHONE": "+27219370300",
+        "VAPID_SUBJECT": "mailto:noreply@mybestlife.live"
+      },
+      "d1_databases": [
+        { "binding": "DB", "database_name": "beacon-staging", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
+      ],
+      "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "beacon-photos-staging" }]
+    }
+  }
+}
