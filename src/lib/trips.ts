@@ -120,7 +120,9 @@ export function markBack(db: DB, id: string, now: number) {
   )
 }
 export function requestHelp(db: DB, id: string, _now: number) {
-  return changed(db.prepare(`UPDATE trips SET status = 'help' WHERE id = ? AND status IN ('active','overdue')`).bind(id))
+  return changed(
+    db.prepare(`UPDATE trips SET status = 'help', operators_alerted_at = NULL WHERE id = ? AND status IN ('active','overdue')`).bind(id),
+  )
 }
 export function cancelHelp(db: DB, id: string, now: number) {
   return changed(

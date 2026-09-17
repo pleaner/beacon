@@ -23,6 +23,7 @@
   "env": {
     "staging": {
       "name": "sarza-beacon-staging",
+      "workers_dev": true,
       "routes": [],
       "vars": {
         "APP_URL": "https://sarza-beacon-staging.pleaner-mail.workers.dev",
