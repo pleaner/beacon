@@ -6,7 +6,7 @@
 
 **Architecture:** One Cloudflare Worker running a Hono app with server-rendered JSX screens, a small plain-JS client file for geolocation, battery, push subscription and the help slider, D1 for data, R2 for photos, and a one-minute cron that moves trips to overdue and pushes explorers then operators. JSON endpoints under `/api` are shared by the HTML forms and the future native app.
 
-**Tech Stack:** Hono 4.x with `hono/jsx`, Cloudflare Workers with static assets, D1, R2, Cron Triggers, Email Sending binding, `@block65/webcrypto-web-push` 2.x for Web Push, Vitest 4 with `@cloudflare/vitest-plugin`, Wrangler 4, TypeScript. No bundler for client code.
+**Tech Stack:** Hono 4.x with `hono/jsx`, Cloudflare Workers with static assets, D1, R2, Cron Triggers, Resend for email (same account and key as BestLife), `@block65/webcrypto-web-push` 2.x for Web Push, Vitest 4 with `@cloudflare/vitest-plugin`, Wrangler 4, TypeScript. No bundler for client code.
 
 **Spec:** `docs/superpowers/specs/2026-09-17-sarza-beacon-design.md`
 
@@ -26,6 +26,9 @@
 - Package versions to pin: `hono@^4.13`, `wrangler@^4.134`, `vitest@^4.1`, `@cloudflare/vitest-plugin@^1.1`, `@block65/webcrypto-web-push@^2.0`, `typescript@^5`.
 - Every commit message ends with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 - Emergency phone number shown on the help screen is a Worker var `EMERGENCY_PHONE`. Placeholder value `+27219370300` until SARZA confirms.
+- Production URL is `https://beacon.pleaner.com`, a Workers custom domain on the `pleaner.com` zone already in the account. Staging stays on `*.workers.dev`.
+- Email goes through Resend with the same API key the BestLife app uses (found in `~/dev/kudutours/worker/.dev.vars` as `RESEND_API_KEY`). That key is send-only. The only verified sending domain on it is `mybestlife.live`, so `EMAIL_FROM` is `SARZA Beacon <noreply@mybestlife.live>` until `pleaner.com` is verified in Resend.
+- Secrets: `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `RESEND_API_KEY`.
 
 ## File structure
 
@@ -44,7 +47,7 @@ src/lib/db.ts                users, settings, checklists, subscriptions, positio
 src/lib/trips.ts             trip queries and state transitions
 src/lib/push.ts              Web Push sender, fan-out, dead subscription pruning
 src/lib/cron.ts              runCron: prompt, alert operators, prune positions
-src/lib/email.ts             sendMagicLink via EMAIL binding or console
+src/lib/email.ts             sendMagicLink via Resend, or console when no key
 src/lib/middleware.ts        loadUser, requireRole, readBody
 src/routes/explorer.tsx      screens 1 to 6 (GET) and photo serving
 src/routes/api.ts            JSON and form endpoints: profile, trips, position, subscribe
@@ -123,38 +126,39 @@ Run: `npm install`
   "compatibility_flags": ["nodejs_compat"],
   "assets": { "directory": "./public", "binding": "ASSETS" },
   "triggers": { "crons": ["* * * * *"] },
+  // Custom domain on the pleaner.com zone. Cloudflare creates the DNS record and cert on deploy.
+  "routes": [{ "pattern": "beacon.pleaner.com", "custom_domain": true }],
   "vars": {
-    "APP_URL": "http://localhost:8787",
-    "EMAIL_FROM": "beacon@sarza.example",
+    "APP_URL": "https://beacon.pleaner.com",
+    "EMAIL_FROM": "SARZA Beacon <noreply@mybestlife.live>",
     "EMERGENCY_PHONE": "+27219370300",
-    "VAPID_SUBJECT": "mailto:beacon@sarza.example"
+    "VAPID_SUBJECT": "mailto:noreply@mybestlife.live"
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "beacon", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
   ],
   "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "beacon-photos" }],
-  "send_email": [{ "name": "EMAIL" }],
   "observability": { "enabled": true },
   "env": {
     "staging": {
       "name": "sarza-beacon-staging",
+      "routes": [],
       "vars": {
         "APP_URL": "https://sarza-beacon-staging.workers.dev",
-        "EMAIL_FROM": "beacon@sarza.example",
+        "EMAIL_FROM": "SARZA Beacon <noreply@mybestlife.live>",
         "EMERGENCY_PHONE": "+27219370300",
-        "VAPID_SUBJECT": "mailto:beacon@sarza.example"
+        "VAPID_SUBJECT": "mailto:noreply@mybestlife.live"
       },
       "d1_databases": [
         { "binding": "DB", "database_name": "beacon-staging", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
       ],
-      "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "beacon-photos-staging" }],
-      "send_email": [{ "name": "EMAIL" }]
+      "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "beacon-photos-staging" }]
     }
   }
 }
 ```
 
-Secrets (set later with `wrangler secret put`): `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`. Real `database_id` values get filled in at Task 13.
+Secrets (set later with `wrangler secret put`): `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `RESEND_API_KEY`. Real `database_id` values get filled in at Task 14. In local dev, `APP_URL` is overridden in `.dev.vars` to `http://localhost:8787`.
 
 - [ ] **Step 3: Create tsconfig.json and .gitignore**
 
@@ -335,7 +339,7 @@ export default {
 }
 ```
 
-Run: `npx wrangler types` to generate `worker-configuration.d.ts`. Commit that file; it changes only when `wrangler.jsonc` does. `Env` will include `DB`, `PHOTOS`, `EMAIL`, `ASSETS`, and the vars. Secrets are not in the config, so declare them in `src/secrets.d.ts`, which `tsconfig.json` picks up through `include`:
+Run: `npx wrangler types` to generate `worker-configuration.d.ts`. Commit that file; it changes only when `wrangler.jsonc` does. `Env` will include `DB`, `PHOTOS`, `ASSETS`, and the vars. Secrets are not in the config, so declare them in `src/secrets.d.ts`, which `tsconfig.json` picks up through `include`:
 
 ```ts
 declare namespace Cloudflare {
@@ -343,6 +347,7 @@ declare namespace Cloudflare {
     SESSION_SECRET: string
     VAPID_PUBLIC_KEY: string
     VAPID_PRIVATE_KEY: string
+    RESEND_API_KEY: string
   }
 }
 ```
@@ -368,6 +373,7 @@ export default defineConfig(async () => {
             SESSION_SECRET: 'test-secret',
             VAPID_PUBLIC_KEY: 'BBBB',
             VAPID_PRIVATE_KEY: 'cccc',
+            // RESEND_API_KEY is left unset on purpose: without it the email helper logs instead of calling Resend.
           },
         },
       }),
@@ -3385,7 +3391,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: Task 2 `signMagicLink`, `verifyMagicLink`, `newToken`, `hashToken`; Task 3 `getUserByEmail`, `setUserTokenHash`.
 - Produces from `src/lib/email.ts`:
-  - `sendMagicLink(env: Env, to: string, url: string): Promise<void>`. Uses `env.EMAIL.send({ to, from: env.EMAIL_FROM, subject, text })` when the binding exists, otherwise logs the URL with `console.log('MAGIC LINK', to, url)`.
+  - `sendMagicLink(env: Env, to: string, url: string): Promise<void>`. POSTs to `https://api.resend.com/emails` with `Authorization: Bearer <RESEND_API_KEY>` and `{ from: env.EMAIL_FROM, to, subject, text }`, the same shape BestLife uses. When `RESEND_API_KEY` is empty or unset it logs the URL with `console.log('MAGIC LINK', to, url)` instead. Throws on a non-2xx Resend response.
   - `lastMagicLinkForTests(): { to: string; url: string } | null` records the last call so route tests can follow the link. It is set on every call regardless of transport.
 - Produces routes:
   - `GET /login` renders `Login`. A signed-in operator or admin is redirected to `/board`.
@@ -3485,18 +3491,18 @@ export function lastMagicLinkForTests() {
 export async function sendMagicLink(env: Env, to: string, url: string): Promise<void> {
   last = { to, url }
   const text = `Open this link on your phone to sign in to SARZA Beacon. It works for 15 minutes.\n\n${url}\n\nIf you didn't ask for this, ignore it.`
-  const email = (env as { EMAIL?: { send(m: { to: string; from: string; subject: string; text: string }): Promise<unknown> } }).EMAIL
-  if (!email) {
+  if (!env.RESEND_API_KEY) {
     console.log('MAGIC LINK', to, url)
     return
   }
-  await email.send({ to, from: env.EMAIL_FROM, subject: 'Your SARZA Beacon sign-in link', text })
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: env.EMAIL_FROM, to, subject: 'Your SARZA Beacon sign-in link', text }),
+  })
+  if (!res.ok) throw new Error(`Resend error ${res.status}: ${await res.text()}`)
 }
 ```
-
-If `wrangler types` already typed `EMAIL` on `Env` with a `send` method, drop the cast and call `env.EMAIL.send(...)` directly, keeping the `if (!env.EMAIL)` guard for local dev and tests.
-
-If the test runner refuses to start because Miniflare does not know the `send_email` binding, move the `send_email` entries in `wrangler.jsonc` under a new `"env": { "production": { ... } }` block, keep staging as is, change the deploy script to `wrangler deploy --env production`, and keep the top-level config binding-free for that one binding. Note the change in the commit message.
 
 - [ ] **Step 4: Write the views**
 
@@ -4278,9 +4284,11 @@ Expected: two lines. The public key is 87 characters and starts with `B`.
 Create `.dev.vars` (already in `.gitignore`):
 
 ```
+APP_URL=http://localhost:8787
 SESSION_SECRET=<output of: openssl rand -base64 32>
 VAPID_PUBLIC_KEY=<from step 1>
 VAPID_PRIVATE_KEY=<from step 1>
+RESEND_API_KEY=<copy the value from ~/dev/kudutours/worker/.dev.vars>
 ```
 
 - [ ] **Step 3: Create the staging resources and fill in ids**
@@ -4297,12 +4305,15 @@ npm run migrate:staging
 npx wrangler secret put SESSION_SECRET --env staging
 npx wrangler secret put VAPID_PUBLIC_KEY --env staging
 npx wrangler secret put VAPID_PRIVATE_KEY --env staging
+npx wrangler secret put RESEND_API_KEY --env staging
 npm run deploy:staging
 ```
 
 Set `env.staging.vars.APP_URL` to the URL wrangler prints and deploy again. Push needs HTTPS and a real origin, which is why this step happens on staging rather than localhost.
 
-Email: the `send_email` binding only delivers from a domain verified in the Cloudflare dashboard under Email Service. Until SARZA has a domain there, use the fallback: the magic link is printed in the Worker logs. Read it with `npx wrangler tail --env staging` while an operator requests a link. Note this in the README as a known gap.
+Production is the same four secrets without `--env`, then `npx wrangler d1 create beacon`, `npx wrangler r2 bucket create beacon-photos`, `npm run migrate:prod`, `npm run deploy`. The deploy creates the `beacon.pleaner.com` DNS record and certificate on its own because `routes` has `custom_domain: true`. Confirm with `curl -I https://beacon.pleaner.com/health` after a minute.
+
+Email sends from `noreply@mybestlife.live`, which is already verified on the Resend account. To send from `@pleaner.com` later, add and verify that domain in the Resend dashboard and change `EMAIL_FROM`.
 
 - [ ] **Step 4: First admin**
 
@@ -4313,7 +4324,7 @@ npx wrangler d1 execute beacon-staging --env staging --remote --command \
   "INSERT INTO users (id, role, name, phone, email, organisation, consent_contact, created_at) VALUES ('$(uuidgen | tr A-Z a-z)', 'admin', 'Sean', '+27820000000', 'hermione@magicsafari.com', 'SARZA', 0, $(date +%s)000)"
 ```
 
-Then open `<APP_URL>/login`, request a link, fetch it from `wrangler tail`, and open it. Expect the board.
+Then open `<APP_URL>/login`, request a link, and open it from the email. If it does not arrive, `npx wrangler tail --env staging` shows the Resend error. Expect the board.
 
 - [ ] **Step 5: Device check, done by hand, recorded in the README**
 
@@ -4353,7 +4364,7 @@ Spec: docs/superpowers/specs/2026-09-17-sarza-beacon-design.md
 
 Trigger the cron by hand in dev: `curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"`.
 
-Magic links print in the dev console when no email domain is verified.
+Magic links print in the dev console when RESEND_API_KEY is unset.
 
 ## Test
 
@@ -4364,7 +4375,7 @@ Magic links print in the dev console when no email domain is verified.
     npm run migrate:staging && npm run deploy:staging
     npm run migrate:prod && npm run deploy
 
-Secrets per environment: SESSION_SECRET, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY.
+Secrets per environment: SESSION_SECRET, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, RESEND_API_KEY. Production serves https://beacon.pleaner.com.
 
 ## First admin
 
@@ -4386,12 +4397,12 @@ Insert a row by hand with `wrangler d1 execute`, role `admin`, with an email. Se
 
 ## Known gaps
 
-- Email delivery needs a verified domain in Cloudflare Email Service. Until then, read magic links from `wrangler tail`.
+- Email sends from noreply@mybestlife.live until pleaner.com is verified in Resend.
 - No background location. Positions arrive only while the app is open.
 - Explorer identity is a cookie. Clearing the browser means a new profile.
 ```
 
-Also add `.dev.vars.example` with the three variable names and empty values, and commit it.
+Also add `.dev.vars.example` with the five variable names and empty values, and commit it.
 
 - [ ] **Step 7: Commit**
 
