@@ -4,7 +4,7 @@ import type { AppEnv } from '../env'
 import { COOKIE_MAX_AGE, COOKIE_NAME, hashToken, newToken } from '../lib/auth'
 import { ACTIVITIES, AREAS, type Activity, type Area } from '../lib/constants'
 import { createUser, getChecklist, updateUser } from '../lib/db'
-import { done, readBody, requireApiRole, str, wantsJson } from '../lib/middleware'
+import { done, num, readBody, requireApiRole, str, wantsJson } from '../lib/middleware'
 import { savePhoto } from '../lib/photos'
 import { parseReturnBy, previousShoePhotos, startTrip, TripOpenError } from '../lib/trips'
 import { Layout } from '../views/layout'
@@ -76,12 +76,6 @@ api.post('/trips', requireApiRole('explorer'), async (c) => {
 
   const raw = body.checklist as unknown
   const checklist = Array.isArray(raw) ? raw.map(String) : typeof raw === 'string' && raw ? [raw] : []
-  // ponytail: `num()` only reads strings; a JSON body carries these as real numbers, so read them directly here.
-  const asNum = (key: string): number | null => {
-    const v = (body as Record<string, unknown>)[key]
-    const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN
-    return Number.isFinite(n) ? n : null
-  }
   let photo_key: string | null
   let newShoe: string | null
   try {
@@ -98,8 +92,8 @@ api.post('/trips', requireApiRole('explorer'), async (c) => {
       activity, area,
       route_text: str(body, 'route_text'), companions_text: str(body, 'companions_text'), wearing_text: str(body, 'wearing_text'),
       photo_key, shoe_photo_key,
-      start_lat: asNum('start_lat'), start_lng: asNum('start_lng'), start_accuracy: asNum('start_accuracy'),
-      return_by, checklist, battery_at_start: asNum('battery'),
+      start_lat: num(body, 'start_lat'), start_lng: num(body, 'start_lng'), start_accuracy: num(body, 'start_accuracy'),
+      return_by, checklist, battery_at_start: num(body, 'battery'),
     }, now)
     return done(c, { id: trip.id }, '/trip')
   } catch (e) {

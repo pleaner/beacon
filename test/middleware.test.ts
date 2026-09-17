@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import type { AppEnv } from '../src/env'
-import { done, loadUser, readBody, requireApiRole, requireRole, str } from '../src/lib/middleware'
+import { done, loadUser, num, readBody, requireApiRole, requireRole, str, type Body } from '../src/lib/middleware'
 import { cookieFor, makeExplorer, makeOperator } from './helpers'
 
 function testApp() {
@@ -77,5 +77,16 @@ describe('readBody and done', () => {
     }, env)
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toBe('/after')
+  })
+})
+
+describe('num', () => {
+  it('reads a JSON number or a numeric string, and rejects everything else', () => {
+    const body = { n: 12.5, s: '7', bad: 'abc', nan: NaN } as unknown as Body
+    expect(num(body, 'n')).toBe(12.5)
+    expect(num(body, 's')).toBe(7)
+    expect(num(body, 'bad')).toBeNull()
+    expect(num(body, 'missing')).toBeNull()
+    expect(num(body, 'nan')).toBeNull()
   })
 })

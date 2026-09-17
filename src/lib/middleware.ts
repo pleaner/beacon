@@ -55,6 +55,8 @@ export function str(body: Body, key: string): string | null {
 }
 
 export function num(body: Body, key: string): number | null {
+  const v = body[key]
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
   const s = str(body, key)
   if (s === null) return null
   const n = Number(s)
