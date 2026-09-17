@@ -34,17 +34,21 @@ export const AdminPage: FC<{
                 <strong>{u.name}</strong><br /><span class="muted">{u.phone} {u.email ?? ''}</span>
               </td>
               <td>
-                <form method="post" action={`/admin/users/${u.id}`}>
-                  <select name="role">
-                    {(['explorer', 'operator', 'admin'] as const).map((r) => <option value={r} selected={u.role === r}>{r}</option>)}
-                  </select>
-                  <input name="organisation" value={u.organisation ?? ''} placeholder="organisation" />
-                  <button class="btn quiet" type="submit">Save</button>
-                </form>
-                {u.id !== me.id && (
-                  <form method="post" action={`/admin/users/${u.id}/delete`} onsubmit="return confirm('Delete this user and their trips?')">
-                    <button class="btn red" type="submit">Delete</button>
-                  </form>
+                {u.id === me.id ? (
+                  <span class="muted">{u.role} (you)</span>
+                ) : (
+                  <>
+                    <form method="post" action={`/admin/users/${u.id}`}>
+                      <select name="role">
+                        {(['explorer', 'operator', 'admin'] as const).map((r) => <option value={r} selected={u.role === r}>{r}</option>)}
+                      </select>
+                      <input name="organisation" value={u.organisation ?? ''} placeholder="organisation" />
+                      <button class="btn quiet" type="submit">Save</button>
+                    </form>
+                    <form method="post" action={`/admin/users/${u.id}/delete`} onsubmit="return confirm('Delete this user and their trips?')">
+                      <button class="btn red" type="submit">Delete</button>
+                    </form>
+                  </>
                 )}
               </td>
             </tr>

@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono'
 import type { AppEnv } from '../env'
 import { ACTIVITIES, type Activity } from '../lib/constants'
-import { createUser, deleteUser, getChecklist, getSetting, listUsers, setChecklist, setSetting, updateUser, type Role } from '../lib/db'
+import { createUser, deleteUser, getChecklist, getSetting, getUserByEmail, listUsers, setChecklist, setSetting, updateUser, type Role } from '../lib/db'
 import { readBody, requireRole, str } from '../lib/middleware'
 import { getSender, pushToRoles } from '../lib/push'
 import { AdminPage } from '../views/admin'
@@ -35,6 +35,10 @@ admin.post('/admin/users', async (c) => {
   if (!name || !email || !phone || !organisation || (role !== 'operator' && role !== 'admin')) {
     return render(c, { tab: 'users', error: 'Name, email, phone, organisation, and role are all required', status: 400 })
   }
+  const existing = await getUserByEmail(c.env.DB, email)
+  if (existing && (existing.role === 'operator' || existing.role === 'admin')) {
+    return render(c, { tab: 'users', error: 'An operator with that email already exists', status: 400 })
+  }
   await createUser(c.env.DB, {
     role, name, email, phone, organisation, emergency_name: null, emergency_phone: null, description: null, photo_key: null, consent_contact: 0,
   })
@@ -44,8 +48,13 @@ admin.post('/admin/users', async (c) => {
 admin.post('/admin/users/:id', async (c) => {
   const b = await readBody(c)
   const role = str(b, 'role') as Role | null
+  const organisation = str(b, 'organisation')
   if (!role || !['explorer', 'operator', 'admin'].includes(role)) return render(c, { tab: 'users', error: 'Bad role', status: 400 })
-  await updateUser(c.env.DB, c.req.param('id'), { role, organisation: str(b, 'organisation') })
+  if (c.req.param('id') === c.var.user!.id) return render(c, { tab: 'users', error: "You can't change your own role", status: 400 })
+  if ((role === 'operator' || role === 'admin') && !organisation) {
+    return render(c, { tab: 'users', error: 'Organisation is required for operators and admins', status: 400 })
+  }
+  await updateUser(c.env.DB, c.req.param('id'), { role, organisation })
   return c.redirect('/admin?tab=users&saved=1', 303)
 })
 

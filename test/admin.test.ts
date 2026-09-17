@@ -61,6 +61,33 @@ describe('users tab', () => {
     expect(res.status).toBe(400)
     expect(await getUserById(env.DB, a.user.id)).not.toBeNull()
   })
+
+  it('requires organisation when promoting to operator or admin', async () => {
+    const a = await makeAdmin()
+    const o = await makeOperator()
+    const res = await exports.default.fetch(`${BASE}/admin/users/${o.user.id}`, form(cookieFor(a.token), { role: 'operator', organisation: '' }))
+    expect(res.status).toBe(400)
+    expect((await getUserById(env.DB, o.user.id))?.role).toBe('operator')
+  })
+
+  it('refuses to let an admin change their own role', async () => {
+    const a = await makeAdmin()
+    const res = await exports.default.fetch(`${BASE}/admin/users/${a.user.id}`, form(cookieFor(a.token), { role: 'explorer', organisation: 'SARZA' }))
+    expect(res.status).toBe(400)
+    expect((await getUserById(env.DB, a.user.id))?.role).toBe('admin')
+  })
+
+  it('refuses to add an operator whose email already belongs to an operator', async () => {
+    const a = await makeAdmin()
+    const o = await makeOperator({ email: 'dup@sarza.test' })
+    const res = await exports.default.fetch(`${BASE}/admin/users`, form(cookieFor(a.token), {
+      name: 'Second Op', email: 'dup@sarza.test', phone: '+27820002222', organisation: 'SARZA', role: 'operator',
+    }))
+    expect(res.status).toBe(400)
+    const rows = await env.DB.prepare('SELECT COUNT(*) AS c FROM users WHERE email = ?').bind('dup@sarza.test').first<{ c: number }>()
+    expect(rows?.c).toBe(1)
+    expect((await getUserByEmail(env.DB, 'dup@sarza.test'))?.id).toBe(o.user.id)
+  })
 })
 
 describe('checklists tab', () => {

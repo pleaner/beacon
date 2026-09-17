@@ -18,6 +18,12 @@ describe('users', () => {
     expect(await getUserByEmail(env.DB, 'nobody@x')).toBeNull()
   })
 
+  it('prefers a staff account over an explorer sharing the same email', async () => {
+    await makeExplorer({ email: 'shared@sarza.test' })
+    const { user: op } = await makeOperator({ email: 'shared@sarza.test' })
+    expect((await getUserByEmail(env.DB, 'shared@sarza.test'))?.id).toBe(op.id)
+  })
+
   it('updates, lists newest first, deletes', async () => {
     const a = await makeExplorer({ name: 'A' })
     await new Promise((r) => setTimeout(r, 3))

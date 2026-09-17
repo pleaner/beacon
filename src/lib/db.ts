@@ -62,7 +62,13 @@ export function getUserByTokenHash(db: DB, hash: string) {
   return db.prepare('SELECT * FROM users WHERE token_hash = ?').bind(hash).first<User>()
 }
 export function getUserByEmail(db: DB, email: string) {
-  return db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').bind(email).first<User>()
+  return db
+    .prepare(
+      `SELECT * FROM users WHERE email = ? COLLATE NOCASE
+       ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'operator' THEN 1 ELSE 2 END, created_at DESC`,
+    )
+    .bind(email)
+    .first<User>()
 }
 
 const USER_COLS = ['role', 'name', 'phone', 'email', 'organisation', 'emergency_name', 'emergency_phone',
