@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { deleteCookie, setCookie } from 'hono/cookie'
 import type { AppEnv } from '../env'
 import { COOKIE_MAX_AGE, COOKIE_NAME, hashToken, newToken, signMagicLink, verifyMagicLink } from '../lib/auth'
-import { getUserByEmail, getUserById, setUserTokenHash } from '../lib/db'
+import { getUserByEmail, getUserById, setUserTokenHash, updateUser } from '../lib/db'
 import { sendMagicLink } from '../lib/email'
 import { readBody, str } from '../lib/middleware'
 import { Layout } from '../views/layout'
@@ -25,7 +25,10 @@ auth.post('/auth/link', async (c) => {
     const user = await getUserByEmail(c.env.DB, email)
     if (user && isOps(user.role)) {
       const token = await signMagicLink(c.env.SESSION_SECRET, user.id, Date.now() + MAGIC_LINK_TTL_MS)
-      await sendMagicLink(c.env, email, `${c.env.APP_URL}/auth/verify?t=${token}`)
+      const url = `${c.env.APP_URL}/auth/verify?t=${token}`
+      c.executionCtx.waitUntil(
+        sendMagicLink(c.env, email, url).catch((e) => console.error('magic link email failed', String(e))),
+      )
     }
   }
   return c.html(<Layout title="Check your email" user={null}><LinkSent /></Layout>)
@@ -44,7 +47,8 @@ auth.get('/auth/verify', async (c) => {
   return c.redirect('/board')
 })
 
-auth.get('/logout', (c) => {
+auth.get('/logout', async (c) => {
+  if (c.var.user) await updateUser(c.env.DB, c.var.user.id, { token_hash: null })
   deleteCookie(c, COOKIE_NAME, { path: '/' })
   return c.redirect('/login')
 })
