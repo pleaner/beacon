@@ -20,6 +20,7 @@ describe('users', () => {
 
   it('updates, lists newest first, deletes', async () => {
     const a = await makeExplorer({ name: 'A' })
+    await new Promise((r) => setTimeout(r, 3))
     const b = await makeExplorer({ name: 'B' })
     await updateUser(env.DB, a.user.id, { name: 'A2', consent_contact: 0 })
     expect((await getUserById(env.DB, a.user.id))?.name).toBe('A2')

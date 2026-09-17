@@ -38,19 +38,11 @@ export interface Position {
 
 type DB = D1Database
 
-// ponytail: monotonic timestamp counter ensures tests with rapid user creation have deterministic ordering
-let lastCreatedAt = 0
-function getMonotonicNow(): number {
-  const now = Date.now()
-  lastCreatedAt = Math.max(lastCreatedAt + 1, now)
-  return lastCreatedAt
-}
-
 // users
 
 export async function createUser(db: DB, u: NewUser): Promise<User> {
   const id = crypto.randomUUID()
-  const created_at = getMonotonicNow()
+  const created_at = Date.now()
   await db
     .prepare(
       `INSERT INTO users (id, role, name, phone, email, organisation, emergency_name, emergency_phone,
