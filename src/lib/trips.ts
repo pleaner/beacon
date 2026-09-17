@@ -170,3 +170,24 @@ export async function listOpenTrips(db: DB): Promise<OpenTripRow[]> {
       .all<OpenTripRow>()
   ).results
 }
+
+// new trip form
+
+export const SA_OFFSET_MS = 2 * 60 * 60 * 1000
+
+export function parseReturnBy(value: string | number | null | undefined, now: number): number | null {
+  let ms: number
+  if (typeof value === 'number') ms = value
+  else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {
+    const [d, t] = value.split('T')
+    const [y, mo, da] = d.split('-').map(Number)
+    const [h, mi] = t.split(':').map(Number)
+    ms = Date.UTC(y, mo - 1, da, h, mi) - SA_OFFSET_MS
+  } else return null
+  if (!Number.isFinite(ms) || ms <= now) return null
+  return ms
+}
+
+export function toLocalInput(ms: number): string {
+  return new Date(ms + SA_OFFSET_MS).toISOString().slice(0, 16)
+}

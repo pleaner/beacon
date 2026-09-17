@@ -5,7 +5,6 @@ import { loadUser } from './lib/middleware'
 import { webPushSender } from './lib/push'
 import { api } from './routes/api'
 import { explorer } from './routes/explorer'
-import { Layout } from './views/layout'
 
 const app = new Hono<AppEnv>()
 app.use(loadUser)
@@ -13,7 +12,6 @@ app.use(loadUser)
 app.get('/health', (c) => c.text('ok'))
 app.route('/api', api)
 app.route('/', explorer)
-app.get('/', (c) => c.html(<Layout title="Home" user={c.var.user}><p>Coming in Task 9.</p></Layout>))
 
 export default {
   fetch: app.fetch,

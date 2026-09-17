@@ -1,11 +1,30 @@
 import { Hono } from 'hono'
 import type { AppEnv } from '../env'
+import { ACTIVITIES, type Activity } from '../lib/constants'
+import { getChecklist } from '../lib/db'
 import { requireRole } from '../lib/middleware'
 import { canSeePhoto } from '../lib/photos'
+import { getOpenTrip, lastTripForUser, previousShoePhotos } from '../lib/trips'
 import { Layout } from '../views/layout'
-import { ProfileForm } from '../views/explorer'
+import { Home, NewTripForm, ProfileForm } from '../views/explorer'
 
 export const explorer = new Hono<AppEnv>()
+
+explorer.get('/', requireRole('explorer'), async (c) => {
+  const user = c.var.user!
+  if (await getOpenTrip(c.env.DB, user.id)) return c.redirect('/trip')
+  const last = await lastTripForUser(c.env.DB, user.id)
+  return c.html(<Layout title="Home" user={user}><Home user={user} last={last} welcome={c.req.query('welcome') === '1'} /></Layout>)
+})
+
+explorer.get('/trip/new', requireRole('explorer'), async (c) => {
+  const user = c.var.user!
+  if (await getOpenTrip(c.env.DB, user.id)) return c.redirect('/trip')
+  const activity = (c.req.query('activity') ?? 'hike') as Activity
+  if (!(activity in ACTIVITIES)) return c.redirect('/')
+  const [checklist, shoes] = await Promise.all([getChecklist(c.env.DB, activity), previousShoePhotos(c.env.DB, user.id)])
+  return c.html(<Layout title="New trip" user={user}><NewTripForm user={user} activity={activity} checklist={checklist} shoes={shoes} /></Layout>)
+})
 
 explorer.get('/profile', async (c) => {
   const user = c.var.user
