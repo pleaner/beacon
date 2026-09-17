@@ -29,7 +29,11 @@ Secrets per environment, set with `wrangler secret put NAME [--env staging]`: `S
 
 ## First admin
 
-There is no sign-up for admins. Insert a row by hand with `wrangler d1 execute DB [--env staging] --remote`, role `admin`, with an email. See the plan, Task 14.
+There is no sign-up for admins. Insert a row by hand:
+
+    npx wrangler d1 execute DB --remote --command "INSERT INTO users (id, role, name, phone, email, organisation, consent_contact, created_at) VALUES (lower(hex(randomblob(16))), 'admin', 'Jane Admin', '+27821234567', 'jane@sarza.org.za', 'SARZA', 1, unixepoch() * 1000)"
+
+Add `--env staging` to target the staging database instead.
 
 ## Device checks
 
