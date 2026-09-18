@@ -8,6 +8,7 @@ interface __BaseEnv_Env {
 	EMAIL_FROM: "SARZA Beacon <noreply@mybestlife.live>";
 	EMERGENCY_PHONE: "+27219370300";
 	VAPID_SUBJECT: "mailto:noreply@mybestlife.live";
+	GEOCODE_URL: string;
 	APP_URL: string;
 	SESSION_SECRET: string;
 	VAPID_PUBLIC_KEY: string;
@@ -25,6 +26,7 @@ declare namespace Cloudflare {
 		EMAIL_FROM: "SARZA Beacon <noreply@mybestlife.live>";
 		EMERGENCY_PHONE: "+27219370300";
 		VAPID_SUBJECT: "mailto:noreply@mybestlife.live";
+		GEOCODE_URL: string;
 		APP_URL: string;
 		SESSION_SECRET: string;
 		VAPID_PUBLIC_KEY: string;
@@ -38,7 +40,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "EMAIL_FROM" | "EMERGENCY_PHONE" | "VAPID_SUBJECT" | "APP_URL" | "SESSION_SECRET" | "VAPID_PUBLIC_KEY" | "VAPID_PRIVATE_KEY" | "RESEND_API_KEY">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "EMAIL_FROM" | "EMERGENCY_PHONE" | "VAPID_SUBJECT" | "GEOCODE_URL" | "APP_URL" | "SESSION_SECRET" | "VAPID_PUBLIC_KEY" | "VAPID_PRIVATE_KEY" | "RESEND_API_KEY">> {}
 }
 
 // Begin runtime types

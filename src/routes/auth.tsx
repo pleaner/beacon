@@ -17,7 +17,7 @@ export const auth = new Hono<AppEnv>()
 auth.get('/login', (c) => {
   const user = c.var.user
   if (user && isOps(user.role)) return c.redirect('/board')
-  return c.html(<Layout title="Sign in" user={null}><Login /></Layout>)
+  return c.html(<Layout title="Sign in" user={null} variant="bare" bodyClass="navy"><Login /></Layout>)
 })
 
 auth.post('/auth/link', async (c) => {
@@ -32,14 +32,14 @@ auth.post('/auth/link', async (c) => {
       )
     }
   }
-  return c.html(<Layout title="Check your email" user={null}><LinkSent /></Layout>)
+  return c.html(<Layout title="Check your email" user={null} variant="bare" bodyClass="navy"><LinkSent /></Layout>)
 })
 
 async function finishVerify(c: Context<AppEnv>, token: string) {
   const userId = await verifyMagicLink(c.env.SESSION_SECRET, token, Date.now())
   const user = userId ? await getUserById(c.env.DB, userId) : null
   if (!user || !isOps(user.role)) {
-    return c.html(<Layout title="Sign in" user={null}><Login error="That link has expired. Ask for a new one." /></Layout>, 400)
+    return c.html(<Layout title="Sign in" user={null} variant="bare" bodyClass="navy"><Login error="That link has expired. Ask for a new one." /></Layout>, 400)
   }
   const session = newToken()
   await setUserTokenHash(c.env.DB, user.id, await hashToken(session))

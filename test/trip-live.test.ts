@@ -71,7 +71,7 @@ describe('GET /trip', () => {
   it('renders an error passed on the query string in a red banner', async () => {
     const { cookie } = await live()
     const html = await (await call('/trip?error=Pick%20a%20time', { cookie })).text()
-    expect(html).toContain('<div class="banner red">Pick a time</div>')
+    expect(html).toContain('<div class="banner error" role="alert">Pick a time</div>')
   })
 })
 

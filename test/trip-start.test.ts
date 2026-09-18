@@ -1,6 +1,8 @@
 import { env, exports } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
-import { getOpenTrip, parseReturnBy, startTrip, type NewTrip } from '../src/lib/trips'
+import { getOpenTrip, getTrip, listCompanions, parseReturnBy, startTrip, type NewTrip } from '../src/lib/trips'
+import { setPlaceLookupForTests } from '../src/lib/places'
+import { afterEach } from 'vitest'
 import { cookieFor, makeAdmin, makeExplorer, makeOperator } from './helpers'
 
 const BASE = 'https://beacon.test'
@@ -78,7 +80,77 @@ describe('GET /trip/new', () => {
   })
 })
 
+afterEach(() => setPlaceLookupForTests(null))
+
 describe('POST /api/trips', () => {
+  it('starts without an area, with a destination and companions from a form', async () => {
+    const e = await makeExplorer()
+    const fd = new FormData()
+    fd.append('activity', 'paraglide')
+    fd.append('return_by', '2099-01-01T10:00')
+    fd.append('destination_text', 'Clifton landing')
+    fd.append('company', 'group')
+    for (const [n, p, cc] of [['Themba', '072 555 0114', '27'], ['', '', '27'], ['Sam', '', '44']]) {
+      fd.append('companion_name', n); fd.append('companion_phone', p); fd.append('companion_phone_country', cc)
+    }
+    fd.append('gear_photo', new File([new Uint8Array([1])], 'wing.jpg', { type: 'image/jpeg' }))
+    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: fd, redirect: 'manual' })
+    expect(res.status).toBe(303)
+    const trip = (await getOpenTrip(env.DB, e.user.id))!
+    expect(trip.area).toBe('other')
+    expect(trip.destination_text).toBe('Clifton landing')
+    expect(trip.gear_photo_key).toMatch(new RegExp(`^users/${e.user.id}/.+\\.jpg$`))
+    const people = await listCompanions(env.DB, trip.id)
+    expect(people.map((p) => [p.name, p.phone])).toEqual([['Themba', '+27725550114'], ['Sam', null]])
+  })
+
+  it('ignores companions when going alone, and gear photos for activities without gear', async () => {
+    const e = await makeExplorer()
+    const res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), {
+      activity: 'hike', return_by: Date.now() + 3_600_000, company: 'alone', companions: [{ name: 'Ghost' }],
+      gear_photo_key: `users/${e.user.id}/bike.jpg`,
+    }))
+    expect(res.status).toBe(200)
+    const trip = (await getOpenTrip(env.DB, e.user.id))!
+    expect(await listCompanions(env.DB, trip.id)).toEqual([])
+    expect(trip.gear_photo_key).toBeNull()
+  })
+
+  it('comes back filled in, on the right step, when the start fails', async () => {
+    const e = await makeExplorer()
+    const fd = new FormData()
+    fd.append('activity', 'hike')
+    fd.append('return_by', '2000-01-01T10:00')
+    fd.append('destination_text', 'Maclear Beacon')
+    fd.append('route_text', 'Platteklip up')
+    fd.append('checklist', 'Headtorch')
+    fd.append('company', 'group')
+    fd.append('companion_name', 'Zola'); fd.append('companion_phone', '0725550000'); fd.append('companion_phone_country', '27')
+    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: fd })
+    expect(res.status).toBe(400)
+    const html = await res.text()
+    expect(html).toContain('value="Maclear Beacon"')
+    expect(html).toContain('>Platteklip up</textarea>')
+    expect(html).toContain('value="Zola"')
+    expect(html).toContain('value="725550000"')
+    expect(html).toMatch(/value="Headtorch" id="c\d+" checked/)
+    // the message sits on the "When will you be back?" step
+    const when = html.indexOf('When will you be back?')
+    expect(html.indexOf('must be a time in the future')).toBeGreaterThan(when)
+    expect(html.indexOf('must be a time in the future')).toBeLessThan(html.indexOf('Before you go'))
+  })
+
+  it('names the start point after the trip starts', async () => {
+    setPlaceLookupForTests(async (lat, lng) => (lat < -33 && lng > 18 ? 'Kloof Nek, Cape Town' : null))
+    const e = await makeExplorer()
+    const res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), {
+      activity: 'hike', return_by: Date.now() + 3_600_000, start_lat: -33.95, start_lng: 18.4,
+    }))
+    const { id } = await res.json<{ id: string }>()
+    for (let i = 0; i < 20 && !(await getTrip(env.DB, id))?.start_place; i++) await new Promise((r) => setTimeout(r, 10))
+    expect((await getTrip(env.DB, id))?.start_place).toBe('Kloof Nek, Cape Town')
+  })
+
   it('starts a trip from json', async () => {
     const e = await makeExplorer()
     const return_by = Date.now() + 2 * 3_600_000

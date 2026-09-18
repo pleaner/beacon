@@ -1,7 +1,6 @@
-import { ACTIVITIES, AREAS } from './constants'
 import { getSetting, getUserById, prunePositions } from './db'
 import { helpPayload, pushToRoles, pushToUser, type PushSender } from './push'
-import { findHelpTripsToAlert, findTripsToAlertOperators, findTripsToPrompt, markOperatorsAlerted, markOverdue } from './trips'
+import { findHelpTripsToAlert, findTripsToAlertOperators, findTripsToPrompt, markOperatorsAlerted, markOverdue, tripLine } from './trips'
 
 export const POSITION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -23,7 +22,7 @@ export async function runCron(env: Env, send: PushSender, now: number) {
       prompted++
       await pushToUser(db, send, trip.user_id, {
         title: 'Are you okay?',
-        body: "You're past your return time. Open SARZA Beacon and tell us.",
+        body: "You're past your return time. Let us know you're safe, or add more time.",
         url: '/',
         tag: 'overdue',
         requireInteraction: true,
@@ -40,7 +39,7 @@ export async function runCron(env: Env, send: PushSender, now: number) {
       const user = await getUserById(db, trip.user_id)
       await pushToRoles(db, send, ['operator', 'admin'], {
         title: `Overdue: ${user?.name ?? 'unknown'}`,
-        body: `${ACTIVITIES[trip.activity]} in ${AREAS[trip.area]}, due ${formatTime(trip.return_by)}. No answer for ${graceMinutes} min.`,
+        body: `${tripLine(trip)}, due ${formatTime(trip.return_by)}. No answer for ${graceMinutes} min.`,
         url: `/board/trips/${trip.id}`,
         tag: `trip-${trip.id}`,
       })

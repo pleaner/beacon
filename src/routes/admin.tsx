@@ -4,7 +4,8 @@ import { ACTIVITIES, type Activity } from '../lib/constants'
 import { createUser, deleteUser, getChecklist, getSetting, getUserByEmail, listUsers, setChecklist, setSetting, updateUser, type Role } from '../lib/db'
 import { readBody, requireRole, str } from '../lib/middleware'
 import { getSender, pushToRoles } from '../lib/push'
-import { AdminPage } from '../views/admin'
+import { ADMIN_TABS, AdminPage, type AdminTab } from '../views/admin'
+import { listOpenTrips } from '../lib/trips'
 import { Layout } from '../views/layout'
 
 export const admin = new Hono<AppEnv>()
@@ -13,13 +14,16 @@ admin.use('/admin/*', requireRole('admin'))
 
 async function render(c: Context<AppEnv>, over: { tab?: string; error?: string; status?: 200 | 400 } = {}) {
   const me = c.var.user!
-  const tab = over.tab ?? c.req.query('tab') ?? 'users'
+  const rawTab = over.tab ?? c.req.query('tab') ?? 'users'
+  const tab: AdminTab = rawTab in ADMIN_TABS ? (rawTab as AdminTab) : 'users'
   const activityQ = c.req.query('activity') ?? 'hike'
   const activity = (activityQ in ACTIVITIES ? activityQ : 'hike') as Activity
-  const [users, items, grace] = await Promise.all([listUsers(c.env.DB), getChecklist(c.env.DB, activity), getSetting(c.env.DB, 'grace_minutes', '30')])
+  const [users, items, grace, open] = await Promise.all([
+    listUsers(c.env.DB), getChecklist(c.env.DB, activity), getSetting(c.env.DB, 'grace_minutes', '30'), listOpenTrips(c.env.DB),
+  ])
   return c.html(
-    <Layout title="Admin" user={me}>
-      <AdminPage tab={tab} users={users} me={me} activity={activity} items={items} grace={grace}
+    <Layout title={ADMIN_TABS[tab]} user={me} current={tab} helpCount={open.filter((t) => t.status === 'help').length}>
+      <AdminPage tab={tab} users={users} me={me} activity={activity} items={items} grace={grace} q={c.req.query('q') ?? ''}
         sent={c.req.query('sent') ?? null} saved={c.req.query('saved') === '1'} error={over.error} />
     </Layout>,
     over.status ?? 200,

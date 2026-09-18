@@ -55,7 +55,7 @@ describe('runCron', () => {
     expect(r.alerted).toBe(1)
     const op = f.sent.find((s) => s.endpoint === 'https://push.test/o')
     expect(op?.payload.title).toBe('Overdue: Thandi')
-    expect(op?.payload.body).toContain('Hike in Cederberg')
+    expect(op?.payload.body).toContain('Hike from Cederberg')
     expect(op?.payload.url).toBe(`/board/trips/${t.id}`)
     r = await runCron(env, f.send, 10_000 + GRACE + 60_000)
     expect(r.alerted).toBe(0)

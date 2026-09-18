@@ -1,4 +1,4 @@
-import type { Activity, Area } from './constants'
+import { ACTIVITIES, AREAS, type Activity, type Area } from './constants'
 
 export type TripStatus = 'active' | 'overdue' | 'help' | 'closed'
 export type ClosedReason = 'safe' | 'cancelled' | 'operator_closed'
@@ -26,11 +26,25 @@ export interface Trip {
   closed_at: number | null
   closed_reason: ClosedReason | null
   created_at: number
+  destination_text: string | null
+  start_place: string | null
+  gear_photo_key: string | null
+}
+
+export interface Companion {
+  id: number
+  trip_id: string
+  name: string
+  phone: string | null
+  sort: number
 }
 
 export interface NewTrip {
   activity: Activity
-  area: Area
+  area?: Area
+  destination_text?: string | null
+  gear_photo_key?: string | null
+  companions?: Array<{ name: string; phone: string | null }>
   route_text: string | null
   companions_text: string | null
   wearing_text: string | null
@@ -44,7 +58,7 @@ export interface NewTrip {
   battery_at_start: number | null
 }
 
-export type OpenTripRow = Trip & { user_name: string; user_phone: string }
+export type OpenTripRow = Trip & { user_name: string; user_phone: string; companion_count: number }
 
 export class TripOpenError extends Error {
   constructor() {
@@ -56,23 +70,34 @@ type DB = D1Database
 
 export async function startTrip(db: DB, userId: string, t: NewTrip, now: number): Promise<Trip> {
   const id = crypto.randomUUID()
+  const insertTrip = db
+    .prepare(
+      `INSERT INTO trips (id, user_id, activity, area, route_text, companions_text, wearing_text, photo_key,
+        shoe_photo_key, start_lat, start_lng, start_accuracy, start_at, return_by, checklist_json,
+        battery_at_start, status, created_at, destination_text, gear_photo_key)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?)`,
+    )
+    .bind(id, userId, t.activity, t.area ?? 'other', t.route_text, t.companions_text, t.wearing_text, t.photo_key,
+      t.shoe_photo_key, t.start_lat, t.start_lng, t.start_accuracy, now, t.return_by,
+      JSON.stringify(t.checklist), t.battery_at_start, now, t.destination_text ?? null, t.gear_photo_key ?? null)
+  const addCompanion = db.prepare('INSERT INTO companions (trip_id, name, phone, sort) VALUES (?,?,?,?)')
+  const companions = (t.companions ?? []).slice(0, 30).map((c, i) => addCompanion.bind(id, c.name, c.phone, i))
   try {
-    await db
-      .prepare(
-        `INSERT INTO trips (id, user_id, activity, area, route_text, companions_text, wearing_text, photo_key,
-          shoe_photo_key, start_lat, start_lng, start_accuracy, start_at, return_by, checklist_json,
-          battery_at_start, status, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?)`,
-      )
-      .bind(id, userId, t.activity, t.area, t.route_text, t.companions_text, t.wearing_text, t.photo_key,
-        t.shoe_photo_key, t.start_lat, t.start_lng, t.start_accuracy, now, t.return_by,
-        JSON.stringify(t.checklist), t.battery_at_start, now)
-      .run()
+    // One batch, so a trip never exists without its companions.
+    await db.batch([insertTrip, ...companions])
   } catch (e) {
     if (String(e).includes('UNIQUE')) throw new TripOpenError()
     throw e
   }
   return (await getTrip(db, id))!
+}
+
+export async function listCompanions(db: DB, tripId: string): Promise<Companion[]> {
+  return (await db.prepare('SELECT * FROM companions WHERE trip_id = ? ORDER BY sort, id').bind(tripId).all<Companion>()).results
+}
+
+export async function setStartPlace(db: DB, id: string, place: string) {
+  await db.prepare('UPDATE trips SET start_place = ? WHERE id = ?').bind(place, id).run()
 }
 
 export function getTrip(db: DB, id: string) {
@@ -92,6 +117,20 @@ export async function previousShoePhotos(db: DB, userId: string): Promise<string
          WHERE user_id = ? AND shoe_photo_key IS NOT NULL GROUP BY shoe_photo_key ORDER BY latest DESC LIMIT 5`,
       )
       .bind(userId)
+      .all<{ k: string }>()
+  ).results
+  return rows.map((r) => r.k)
+}
+
+// Wing or bike photos from earlier trips of the same activity, newest first.
+export async function previousGearPhotos(db: DB, userId: string, activity: Activity): Promise<string[]> {
+  const rows = (
+    await db
+      .prepare(
+        `SELECT gear_photo_key AS k, MAX(created_at) AS latest FROM trips
+         WHERE user_id = ? AND activity = ? AND gear_photo_key IS NOT NULL GROUP BY gear_photo_key ORDER BY latest DESC LIMIT 5`,
+      )
+      .bind(userId, activity)
       .all<{ k: string }>()
   ).results
   return rows.map((r) => r.k)
@@ -172,7 +211,9 @@ export async function listOpenTrips(db: DB): Promise<OpenTripRow[]> {
   return (
     await db
       .prepare(
-        `SELECT t.*, u.name AS user_name, u.phone AS user_phone FROM trips t JOIN users u ON u.id = t.user_id
+        `SELECT t.*, u.name AS user_name, u.phone AS user_phone,
+           (SELECT COUNT(*) FROM companions c WHERE c.trip_id = t.id) AS companion_count
+         FROM trips t JOIN users u ON u.id = t.user_id
          WHERE t.status != 'closed'
          ORDER BY CASE t.status WHEN 'help' THEN 0 WHEN 'overdue' THEN 1 ELSE 2 END, t.return_by ASC`,
       )
@@ -199,4 +240,15 @@ export function parseReturnBy(value: string | number | null | undefined, now: nu
 
 export function toLocalInput(ms: number): string {
   return new Date(ms + SA_OFFSET_MS).toISOString().slice(0, 16)
+}
+
+// Where a trip started, in words: the looked-up place, else the old area label.
+export function tripPlace(t: Pick<Trip, 'start_place' | 'area'>): string | null {
+  if (t.start_place) return t.start_place
+  return t.area && t.area !== 'other' ? AREAS[t.area] : null
+}
+
+export function tripLine(t: Pick<Trip, 'activity' | 'start_place' | 'area'>): string {
+  const place = tripPlace(t)
+  return place ? `${ACTIVITIES[t.activity]} from ${place}` : ACTIVITIES[t.activity]
 }

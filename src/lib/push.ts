@@ -1,7 +1,6 @@
 import { buildPushPayload, type PushMessage } from '@block65/webcrypto-web-push'
-import { ACTIVITIES, AREAS } from './constants'
 import { deleteSubscription, listSubscriptionsForRoles, listSubscriptionsForUser, type PushSub, type Role, type User } from './db'
-import type { Trip } from './trips'
+import { tripLine, type Trip } from './trips'
 
 export interface PushPayload {
   title: string
@@ -60,7 +59,7 @@ export async function pushToRoles(db: D1Database, send: PushSender, roles: Role[
 export function helpPayload(user: Pick<User, 'name'>, trip: Trip): PushPayload {
   return {
     title: `HELP: ${user.name}`,
-    body: `${ACTIVITIES[trip.activity]} in ${AREAS[trip.area]}. Tap for details.`,
+    body: `${tripLine(trip)}. Tap for details.`,
     url: `/board/trips/${trip.id}`,
     tag: `trip-${trip.id}`,
     requireInteraction: true,

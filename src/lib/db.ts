@@ -14,8 +14,17 @@ export interface User {
   consent_contact: number
   token_hash: string | null
   created_at: number
+  birthday: string | null
+  gender: string | null
+  height_cm: number | null
+  weight_kg: number | null
+  shoe_size: string | null
+  language: string | null
+  emergency_relation: string | null
 }
-export type NewUser = Omit<User, 'id' | 'created_at' | 'token_hash'> & { token_hash?: string | null }
+type ProfileExtra = 'birthday' | 'gender' | 'height_cm' | 'weight_kg' | 'shoe_size' | 'language' | 'emergency_relation'
+export type NewUser = Omit<User, 'id' | 'created_at' | 'token_hash' | ProfileExtra> &
+  Partial<Pick<User, ProfileExtra>> & { token_hash?: string | null }
 
 export interface PushSub {
   id: string
@@ -46,13 +55,19 @@ export async function createUser(db: DB, u: NewUser): Promise<User> {
   await db
     .prepare(
       `INSERT INTO users (id, role, name, phone, email, organisation, emergency_name, emergency_phone,
-        description, photo_key, consent_contact, token_hash, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        description, photo_key, consent_contact, token_hash, created_at,
+        birthday, gender, height_cm, weight_kg, shoe_size, language, emergency_relation)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .bind(id, u.role, u.name, u.phone, u.email, u.organisation, u.emergency_name, u.emergency_phone,
-      u.description, u.photo_key, u.consent_contact ? 1 : 0, u.token_hash ?? null, created_at)
+      u.description, u.photo_key, u.consent_contact ? 1 : 0, u.token_hash ?? null, created_at,
+      u.birthday ?? null, u.gender ?? null, u.height_cm ?? null, u.weight_kg ?? null, u.shoe_size ?? null,
+      u.language ?? null, u.emergency_relation ?? null)
     .run()
-  return { ...u, id, created_at, token_hash: u.token_hash ?? null }
+  return {
+    birthday: null, gender: null, height_cm: null, weight_kg: null, shoe_size: null, language: null, emergency_relation: null,
+    ...u, id, created_at, token_hash: u.token_hash ?? null,
+  }
 }
 
 export function getUserById(db: DB, id: string) {
@@ -72,7 +87,8 @@ export function getUserByEmail(db: DB, email: string) {
 }
 
 const USER_COLS = ['role', 'name', 'phone', 'email', 'organisation', 'emergency_name', 'emergency_phone',
-  'description', 'photo_key', 'consent_contact', 'token_hash'] as const
+  'description', 'photo_key', 'consent_contact', 'token_hash', 'birthday', 'gender', 'height_cm', 'weight_kg',
+  'shoe_size', 'language', 'emergency_relation'] as const
 
 export async function updateUser(db: DB, id: string, fields: Partial<Omit<User, 'id' | 'created_at'>>) {
   const cols = USER_COLS.filter((k) => k in fields)

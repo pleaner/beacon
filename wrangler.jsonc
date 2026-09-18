@@ -13,7 +13,8 @@
     "APP_URL": "https://beacon.pleaner.com",
     "EMAIL_FROM": "SARZA Beacon <noreply@mybestlife.live>",
     "EMERGENCY_PHONE": "+27219370300",
-    "VAPID_SUBJECT": "mailto:noreply@mybestlife.live"
+    "VAPID_SUBJECT": "mailto:noreply@mybestlife.live",
+    "GEOCODE_URL": "https://nominatim.openstreetmap.org/reverse"
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "beacon", "database_id": "e716fd9d-d455-4b63-b48f-b634b463b326", "migrations_dir": "migrations" }
@@ -29,7 +30,8 @@
         "APP_URL": "https://sarza-beacon-staging.pleaner-mail.workers.dev",
         "EMAIL_FROM": "SARZA Beacon <noreply@mybestlife.live>",
         "EMERGENCY_PHONE": "+27219370300",
-        "VAPID_SUBJECT": "mailto:noreply@mybestlife.live"
+        "VAPID_SUBJECT": "mailto:noreply@mybestlife.live",
+        "GEOCODE_URL": "https://nominatim.openstreetmap.org/reverse"
       },
       "d1_databases": [
         { "binding": "DB", "database_name": "beacon-staging", "database_id": "7befae42-c206-4087-8f93-98d3a8a2ff5f", "migrations_dir": "migrations" }

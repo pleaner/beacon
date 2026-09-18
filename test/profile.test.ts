@@ -36,7 +36,7 @@ describe('POST /api/profile', () => {
     const photo = new File([new Uint8Array([1, 2, 3])], 'me.jpg', { type: 'image/jpeg' })
     const res = await exports.default.fetch(`${BASE}/api/profile`, {
       method: 'POST',
-      body: form({ name: 'Sipho', phone: '+27821234567', emergency_name: 'Mom', emergency_phone: '+27829999999', consent_contact: 'on', photo }),
+      body: form({ name: 'Sipho', phone: '+27821234567', email: 'sipho@example.com', emergency_name: 'Mom', emergency_phone: '+27829999999', consent_contact: 'on', photo }),
       redirect: 'manual',
     })
     expect(res.status).toBe(303)
@@ -58,12 +58,73 @@ describe('POST /api/profile', () => {
     const res = await exports.default.fetch(`${BASE}/api/profile`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'Lerato', phone: '0821112222' }),
+      body: JSON.stringify({ name: 'Lerato', phone: '0821112222', email: 'lerato@example.com' }),
     })
     expect(res.status).toBe(200)
     const body = await res.json<{ id: string }>()
     expect(body.id).toBeTruthy()
     expect(res.headers.get('set-cookie')).toContain('beacon=')
+  })
+
+  it('rejects a missing email', async () => {
+    const res = await exports.default.fetch(`${BASE}/api/profile`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'X', phone: '0821112222' }),
+    })
+    expect(res.status).toBe(400)
+    expect((await res.json<{ error: string }>()).error).toContain('email')
+  })
+
+  it('stores the new profile details and normalises phone numbers', async () => {
+    const res = await exports.default.fetch(`${BASE}/api/profile`, {
+      method: 'POST',
+      body: form({
+        name: 'Thandi Mokoena', phone: '082 555 0147', phone_country: '27', email: 'Thandi@Example.com',
+        birthday: '1992-03-12', gender: 'Female', language: 'zu', height_cm: '168', weight_kg: '61', shoe_size: '6.5',
+        emergency_name: 'Lindiwe', emergency_relation: 'Brother or sister', emergency_phone: '7700 900123', emergency_phone_country: '44',
+      }),
+      redirect: 'manual',
+    })
+    expect(res.status).toBe(303)
+    const token = (res.headers.get('set-cookie') ?? '').match(/beacon=([^;]+)/)![1]
+    const u = (await getUserByTokenHash(env.DB, await hashToken(token)))!
+    expect(u.phone).toBe('+27825550147')
+    expect(u.email).toBe('thandi@example.com')
+    expect(u.emergency_phone).toBe('+447700900123')
+    expect(u).toMatchObject({ birthday: '1992-03-12', gender: 'Female', language: 'zu', height_cm: 168, weight_kg: 61, shoe_size: '6.5', emergency_relation: 'Brother or sister' })
+  })
+
+  it('drops out-of-range or unknown profile details instead of failing', async () => {
+    const res = await exports.default.fetch(`${BASE}/api/profile`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Q', phone: '+27820000001', email: 'q@example.com', height_cm: 900, gender: 'robot', birthday: '2999-01-01', language: 'xx' }),
+    })
+    expect(res.status).toBe(200)
+    const { id } = await res.json<{ id: string }>()
+    const u = await env.DB.prepare('SELECT height_cm, gender, birthday, language FROM users WHERE id = ?').bind(id).first()
+    expect(u).toEqual({ height_cm: null, gender: null, birthday: null, language: null })
+  })
+
+  it('keeps what was typed when a save fails', async () => {
+    const res = await exports.default.fetch(`${BASE}/api/profile`, {
+      method: 'POST', body: form({ name: 'Nomsa', phone: '0821234567', email: 'not-an-email', height_cm: '160' }),
+    })
+    expect(res.status).toBe(400)
+    const html = await res.text()
+    expect(html).toContain('value="Nomsa"')
+    expect(html).toContain('value="821234567"')
+    expect(html).toContain('value="160"')
+    expect(html).toContain('That email address looks wrong')
+  })
+
+  it('leaves profile details alone when a client does not send them', async () => {
+    const e = await makeExplorer({ height_cm: 180, gender: 'Male' })
+    const res = await exports.default.fetch(`${BASE}/api/profile`, {
+      method: 'POST', headers: { cookie: cookieFor(e.token), 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Renamed', phone: '+27820000000', email: 'r@example.com' }),
+    })
+    expect(res.status).toBe(200)
+    const u = (await getUserByTokenHash(env.DB, await hashToken(e.token)))!
+    expect(u).toMatchObject({ name: 'Renamed', height_cm: 180, gender: 'Male' })
   })
 
   it('rejects a missing name or phone', async () => {
@@ -78,7 +139,7 @@ describe('POST /api/profile', () => {
     const photo = new File([new Uint8Array(9 * 1024 * 1024)], 'me.jpg', { type: 'image/jpeg' })
     const res = await exports.default.fetch(`${BASE}/api/profile`, {
       method: 'POST',
-      body: form({ name: 'Big', phone: '+27821111111', photo }),
+      body: form({ name: 'Big', phone: '+27821111111', email: 'big@example.com', photo }),
     })
     expect(res.status).toBe(400)
     const cookie = res.headers.get('set-cookie') ?? ''
@@ -93,7 +154,7 @@ describe('POST /api/profile', () => {
     const photo = new File([new Uint8Array([1, 2, 3])], 'x.html', { type: 'text/html' })
     const res = await exports.default.fetch(`${BASE}/api/profile`, {
       method: 'POST',
-      body: form({ name: 'Hax', phone: '+27822222222', photo }),
+      body: form({ name: 'Hax', phone: '+27822222222', email: 'hax@example.com', photo }),
     })
     expect(res.status).toBe(400)
     const list = await env.PHOTOS.list()
@@ -105,7 +166,7 @@ describe('POST /api/profile', () => {
     const res = await exports.default.fetch(`${BASE}/api/profile`, {
       method: 'POST',
       headers: { cookie: cookieFor(e.token) },
-      body: form({ name: 'New', phone: '+27820000000' }),
+      body: form({ name: 'New', phone: '+27820000000', email: 'new@example.com' }),
       redirect: 'manual',
     })
     expect(res.status).toBe(303)

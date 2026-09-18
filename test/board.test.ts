@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
 import { insertPosition } from '../src/lib/db'
-import { getTrip, markOverdue, requestHelp, startTrip, type NewTrip } from '../src/lib/trips'
+import { getTrip, markOverdue, requestHelp, setStartPlace, startTrip, type NewTrip } from '../src/lib/trips'
 import { ago } from '../src/views/board'
 import { cookieFor, makeAdmin, makeExplorer, makeOperator } from './helpers'
 
@@ -46,15 +46,25 @@ describe('GET /board', () => {
     expect(html).toContain('class="pill overdue"')
   })
 
-  it('filters by area', async () => {
+  it('filters by status and searches by name or place', async () => {
     const o = await makeOperator()
     const a = await makeExplorer({ name: 'Cederberg Person' })
-    await startTrip(env.DB, a.user.id, { ...base, area: 'cederberg', return_by: Date.now() + 1000 }, Date.now())
+    const ta = await startTrip(env.DB, a.user.id, { ...base, return_by: Date.now() + 1000 }, Date.now())
+    await setStartPlace(env.DB, ta.id, 'Algeria campsite, Cederberg')
     const b = await makeExplorer({ name: 'Table Person' })
-    await startTrip(env.DB, b.user.id, { ...base, return_by: Date.now() + 1000 }, Date.now())
-    const html = await (await exports.default.fetch(`${BASE}/board?area=cederberg`, { headers: { cookie: cookieFor(o.token) } })).text()
+    const tb = await startTrip(env.DB, b.user.id, { ...base, return_by: Date.now() + 1000 }, Date.now())
+    await requestHelp(env.DB, tb.id, Date.now())
+    const get = async (qs: string) => (await exports.default.fetch(`${BASE}/board${qs}`, { headers: { cookie: cookieFor(o.token) } })).text()
+    let html = await get('?status=help')
+    expect(html).toContain('Table Person')
+    expect(html).not.toContain('Cederberg Person')
+    html = await get('?q=algeria')
     expect(html).toContain('Cederberg Person')
+    expect(html).toContain('Hike from Algeria campsite, Cederberg'.replace('Hike', 'Trail run'))
     expect(html).not.toContain('Table Person')
+    html = await get('')
+    expect(html).toContain('Help 1')
+    expect(html).toContain('<span class="count-badge">1</span>')
   })
 })
 
@@ -74,6 +84,28 @@ describe('GET /board/trips/:id', () => {
     expect(html).toContain(`action="/api/board/trips/${t.id}/close"`)
     expect(html).toContain('88%')
     expect(html).toContain('Water')
+  })
+
+  it('shows companions, the destination, profile facts and the emergency relationship', async () => {
+    const o = await makeOperator()
+    const e = await makeExplorer({
+      name: 'Sipho Dlamini', emergency_name: 'Lindiwe', emergency_relation: 'Brother or sister', birthday: '1990-01-01',
+      gender: 'Male', height_cm: 182, weight_kg: 74, shoe_size: '9', language: 'zu',
+    })
+    const t = await startTrip(env.DB, e.user.id, {
+      ...base, activity: 'mtb', destination_text: 'Constantiaberg mast', return_by: Date.now() + 1000,
+      companions: [{ name: 'Themba Nkosi', phone: '+27725550114' }, { name: 'Ayesha', phone: null }],
+    }, Date.now())
+    const html = await (await exports.default.fetch(`${BASE}/board/trips/${t.id}`, { headers: { cookie: cookieFor(o.token) } })).text()
+    expect(html).toContain('Constantiaberg mast')
+    expect(html).toContain('With them · 2')
+    expect(html).toContain('tel:+27725550114')
+    expect(html).toContain('No number given')
+    expect(html).toContain('isiZulu')
+    expect(html).toContain('182 cm')
+    expect(html).toContain('UK 9')
+    expect(html).toContain('(brother or sister)')
+    expect(html).toContain('No bike photo')
   })
 
   it('404s for a missing trip', async () => {
