@@ -14,18 +14,17 @@ export const explorer = new Hono<AppEnv>()
 explorer.get('/', async (c) => {
   const user = c.var.user
   if (!user) return c.html(<Layout title="Welcome" user={null} variant="bare" bodyClass="navy"><Welcome /></Layout>)
-  if (user.role === 'operator' || user.role === 'admin') return c.redirect('/board')
   if (await getOpenTrip(c.env.DB, user.id)) return c.redirect('/trip')
   const last = await lastTripForUser(c.env.DB, user.id)
   const notice = c.req.query('back') === '1' ? "Welcome back. We've closed your trip." : c.req.query('saved') === '1' ? 'Profile saved.' : undefined
   return c.html(
-    <Layout title="Home" user={user} bodyAttrs={{ 'data-vapid': c.env.VAPID_PUBLIC_KEY }}>
+    <Layout title="Home" user={user} variant="app" bodyAttrs={{ 'data-vapid': c.env.VAPID_PUBLIC_KEY }}>
       <Home user={user} last={last} welcome={c.req.query('welcome') === '1'} notice={notice} />
     </Layout>,
   )
 })
 
-explorer.get('/trip', requireRole('explorer'), async (c) => {
+explorer.get('/trip', requireRole('explorer', 'operator', 'admin'), async (c) => {
   const user = c.var.user!
   const trip = await getOpenTrip(c.env.DB, user.id)
   if (!trip) return c.redirect('/')
@@ -38,10 +37,10 @@ explorer.get('/trip', requireRole('explorer'), async (c) => {
       </Layout>,
     )
   }
-  return c.html(<Layout title="Your trip" user={user} bodyAttrs={attrs}><ActiveTrip trip={trip} error={error} /></Layout>)
+  return c.html(<Layout title="Your trip" user={user} variant="app" bodyAttrs={attrs}><ActiveTrip trip={trip} error={error} /></Layout>)
 })
 
-explorer.get('/trip/new', requireRole('explorer'), async (c) => {
+explorer.get('/trip/new', requireRole('explorer', 'operator', 'admin'), async (c) => {
   const user = c.var.user!
   if (await getOpenTrip(c.env.DB, user.id)) return c.redirect('/trip')
   const activity = (c.req.query('activity') ?? 'hike') as Activity
@@ -71,7 +70,6 @@ export function profilePage(user: User | null, opts: { error?: string; vapid?: s
 
 explorer.get('/profile', async (c) => {
   const user = c.var.user
-  if (user && user.role !== 'explorer') return c.text('Forbidden', 403)
   const page = profilePage(user, { vapid: c.env.VAPID_PUBLIC_KEY })
   return c.html(page)
 })

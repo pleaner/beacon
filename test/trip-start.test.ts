@@ -54,18 +54,26 @@ describe('GET /', () => {
     expect(res.headers.get('location')).toBe('/trip')
   })
 
-  it('redirects a signed-in operator to /board', async () => {
+  it('gives an operator the explorer home with a Board item in the menu', async () => {
     const o = await makeOperator()
     const res = await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
-    expect(res.status).toBe(302)
-    expect(res.headers.get('location')).toBe('/board')
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('class="appbar"')
+    expect(html).toContain('href="/board"')
+    expect(html).toContain('href="/profile"')
   })
 
-  it('redirects a signed-in admin to /board', async () => {
+  it('gives an admin the same, and an explorer no Board item', async () => {
     const a = await makeAdmin()
-    const res = await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(a.token) }, redirect: 'manual' })
-    expect(res.status).toBe(302)
-    expect(res.headers.get('location')).toBe('/board')
+    let res = await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(a.token) }, redirect: 'manual' })
+    expect(res.status).toBe(200)
+    expect(await res.text()).toContain('href="/board"')
+    const e = await makeExplorer()
+    res = await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(e.token) }, redirect: 'manual' })
+    const html = await res.text()
+    expect(html).toContain('href="/profile"')
+    expect(html).not.toContain('href="/board"')
   })
 })
 

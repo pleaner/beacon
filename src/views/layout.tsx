@@ -46,6 +46,7 @@ export const Layout: FC<Props> = ({ title, user, bodyAttrs = {}, variant, bodyCl
       </head>
       <body class={cls || undefined} {...bodyAttrs}>
         {v === 'app' && <AppBar user={user} />}
+        {v === 'app' && user && <AppMenu user={user} />}
         {v === 'ops' && <OpsBar user={user!} title={title} current={current} helpCount={helpCount} />}
         {children}
       </body>
@@ -64,14 +65,48 @@ const AppBar: FC<{ user: User | null }> = ({ user }) => (
         </span>
       </a>
       {user && (
-        <nav aria-label="Main">
-          <a href="/profile">Profile</a>
-        </nav>
+        <a class="bar-menu" href="#menu" data-menu-open aria-label="Open menu" aria-controls="menu">
+          <Icon name="menu" size={22} />
+        </a>
       )}
     </div>
     <div class="strip"></div>
   </header>
 )
+
+// The explorer menu. Same sheet markup as the operator one, so it reuses that CSS and JS.
+const AppMenu: FC<{ user: User }> = ({ user }) => {
+  const isOps = user.role === 'operator' || user.role === 'admin'
+  return (
+    <div class="sheet-wrap" id="menu" data-menu>
+      <a class="scrim" href="#" aria-label="Close menu" data-menu-close></a>
+      <nav class="sheet" aria-label="Menu">
+        <div class="head">
+          <img src="/sarza-logo.png" alt="" />
+          <div class="grow">
+            <strong>{user.name}</strong>
+            <small>{user.email ?? ''}</small>
+          </div>
+          <a class="icon-btn" href="#" aria-label="Close menu" data-menu-close>
+            <Icon name="x" size={18} />
+          </a>
+        </div>
+        <div class="body">
+          <a class="item" href="/profile">
+            <Icon name="user" size={18} />
+            <span class="grow">Profile</span>
+          </a>
+          {isOps && (
+            <a class="item" href="/board">
+              <Icon name="board" size={18} />
+              <span class="grow">Board</span>
+            </a>
+          )}
+        </div>
+      </nav>
+    </div>
+  )
+}
 
 const initials = (name: string) =>
   name

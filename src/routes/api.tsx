@@ -123,7 +123,7 @@ function readCompanions(body: Body): Array<{ name: string; phone: string | null 
     .filter((x) => x.name)
 }
 
-api.post('/trips', requireApiRole('explorer'), async (c) => {
+api.post('/trips', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const user = c.var.user!
   const body = await readBody(c)
   const now = Date.now()
@@ -191,7 +191,7 @@ api.post('/trips', requireApiRole('explorer'), async (c) => {
   }
 })
 
-api.get('/place', requireApiRole('explorer'), async (c) => {
+api.get('/place', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const lat = Number(c.req.query('lat')), lng = Number(c.req.query('lng'))
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return c.json({ error: 'Bad coordinates' }, 400)
   try {
@@ -201,7 +201,7 @@ api.get('/place', requireApiRole('explorer'), async (c) => {
   }
 })
 
-api.post('/trips/:id/extend', requireApiRole('explorer'), async (c) => {
+api.post('/trips/:id/extend', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
   const body = await readBody(c)
@@ -218,14 +218,14 @@ api.post('/trips/:id/extend', requireApiRole('explorer'), async (c) => {
   return done(c, { return_by }, '/trip')
 })
 
-api.post('/trips/:id/back', requireApiRole('explorer'), async (c) => {
+api.post('/trips/:id/back', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
   if (!(await markBack(c.env.DB, trip.id, Date.now()))) return tripFail(c, 'That trip has already ended.', 409)
   return done(c, { ok: true }, '/?back=1')
 })
 
-api.post('/trips/:id/help', requireApiRole('explorer'), async (c) => {
+api.post('/trips/:id/help', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const user = c.var.user!
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
@@ -237,14 +237,14 @@ api.post('/trips/:id/help', requireApiRole('explorer'), async (c) => {
   return done(c, { ok: true }, '/trip')
 })
 
-api.post('/trips/:id/cancel', requireApiRole('explorer'), async (c) => {
+api.post('/trips/:id/cancel', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
   if (!(await cancelHelp(c.env.DB, trip.id))) return tripFail(c, "You've already cancelled that call for help.", 409)
   return done(c, { ok: true }, '/trip')
 })
 
-api.post('/trips/:id/positions', requireApiRole('explorer'), async (c) => {
+api.post('/trips/:id/positions', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
   if (trip.status === 'closed') return c.json({ error: 'Trip is closed' }, 409)

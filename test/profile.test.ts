@@ -21,13 +21,13 @@ describe('GET /profile', () => {
     expect(html).toContain('name="consent_contact"')
   })
 
-  it('renders a filled form for an explorer and 403 for an operator', async () => {
+  it('renders a filled form for an explorer, and for an operator too', async () => {
     const e = await makeExplorer({ name: 'Naledi' })
     let res = await exports.default.fetch(`${BASE}/profile`, { headers: { cookie: cookieFor(e.token) } })
     expect(await res.text()).toContain('value="Naledi"')
     const o = await makeOperator()
     res = await exports.default.fetch(`${BASE}/profile`, { headers: { cookie: cookieFor(o.token) } })
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(200)
   })
 })
 
