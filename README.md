@@ -9,7 +9,7 @@ Spec: docs/superpowers/specs/2026-09-17-sarza-beacon-design.md
     npm install
     cp .dev.vars.example .dev.vars   # then fill in, see scripts/vapid.mjs
     npm run migrate:local
-    npm run dev
+    npm run dev   # add -- --test-scheduled to hand-trigger the cron
 
 Trigger the cron by hand in dev: `curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"`.
 
