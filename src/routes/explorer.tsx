@@ -17,7 +17,7 @@ explorer.get('/', async (c) => {
   if (user.role === 'operator' || user.role === 'admin') return c.redirect('/board')
   if (await getOpenTrip(c.env.DB, user.id)) return c.redirect('/trip')
   const last = await lastTripForUser(c.env.DB, user.id)
-  const notice = c.req.query('back') === '1' ? "Welcome back. We've closed your trip." : undefined
+  const notice = c.req.query('back') === '1' ? "Welcome back. We've closed your trip." : c.req.query('saved') === '1' ? 'Profile saved.' : undefined
   return c.html(
     <Layout title="Home" user={user} bodyAttrs={{ 'data-vapid': c.env.VAPID_PUBLIC_KEY }}>
       <Home user={user} last={last} welcome={c.req.query('welcome') === '1'} notice={notice} />
@@ -61,10 +61,10 @@ export async function newTripPage(env: Env, user: User, activity: Activity, erro
   )
 }
 
-export function profilePage(user: User | null, opts: { error?: string; saved?: boolean; vapid?: string; draft?: Partial<User> } = {}) {
+export function profilePage(user: User | null, opts: { error?: string; vapid?: string; draft?: Partial<User> } = {}) {
   return (
     <Layout title="Profile" user={user} variant="bare" bodyClass="plain" bodyAttrs={{ 'data-vapid': opts.vapid ?? '' }}>
-      <ProfileForm user={user} error={opts.error} saved={opts.saved} draft={opts.draft} />
+      <ProfileForm user={user} error={opts.error} draft={opts.draft} />
     </Layout>
   )
 }
@@ -72,7 +72,7 @@ export function profilePage(user: User | null, opts: { error?: string; saved?: b
 explorer.get('/profile', async (c) => {
   const user = c.var.user
   if (user && user.role !== 'explorer') return c.text('Forbidden', 403)
-  const page = profilePage(user, { saved: c.req.query('saved') === '1', vapid: c.env.VAPID_PUBLIC_KEY })
+  const page = profilePage(user, { vapid: c.env.VAPID_PUBLIC_KEY })
   return c.html(page)
 })
 

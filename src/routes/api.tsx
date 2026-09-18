@@ -81,7 +81,7 @@ api.post('/profile', async (c) => {
     try {
       const photo_key = await savePhoto(c.env.PHOTOS, user.id, body.photo)
       await updateUser(c.env.DB, user.id, photo_key ? { ...fields, photo_key } : fields)
-      return done(c, { id: user.id }, '/profile?saved=1')
+      return done(c, { id: user.id }, '/?saved=1')
     } catch (e) {
       return failWith((e as Error).message, user)
     }

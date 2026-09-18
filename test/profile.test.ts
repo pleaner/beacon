@@ -170,7 +170,7 @@ describe('POST /api/profile', () => {
       redirect: 'manual',
     })
     expect(res.status).toBe(303)
-    expect(res.headers.get('location')).toBe('/profile?saved=1')
+    expect(res.headers.get('location')).toBe('/?saved=1')
     expect(res.headers.get('set-cookie')).toBeNull()
     expect((await getUserByTokenHash(env.DB, await hashToken(e.token)))?.name).toBe('New')
   })

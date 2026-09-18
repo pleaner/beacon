@@ -34,7 +34,7 @@ export const Welcome: FC = () => (
 
 // ---------- profile (4 steps) ----------
 
-export const ProfileForm: FC<{ user: User | null; error?: string; saved?: boolean; draft?: Partial<User> }> = ({ user, error, saved, draft }) => {
+export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partial<User> }> = ({ user, error, draft }) => {
   // After a failed save, show what was typed rather than what is stored.
   const v: Partial<User> | null = draft ?? user
   return (
@@ -44,7 +44,6 @@ export const ProfileForm: FC<{ user: User | null; error?: string; saved?: boolea
       <form method="post" action="/api/profile" enctype="multipart/form-data" class="stack grow" data-steps>
         <Step title="Who are you?" icon="user" eyebrowLabel="Your profile" lead="Tell us once. After that, each trip takes a minute to file.">
           {error && <div class="banner error" role="alert">{error}</div>}
-          {saved && <div class="banner ok" role="status">Saved.</div>}
           <div class="stack">
             <SelectField id="p-lang" name="language" label="Language" icon="globe" hideLabel value={v?.language ?? 'en'}
               options={Object.entries(LANGUAGES).map(([value, label]) => ({ value, label }))} />
