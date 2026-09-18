@@ -15,6 +15,23 @@ export const ACTIVITY_NOUN: Record<Activity, string> = {
 
 const opts = (xs: readonly string[]) => xs.map((x) => ({ value: x, label: x }))
 
+// ---------- welcome ----------
+
+// The front door for anyone without a cookie. Says what Beacon is before it asks for a name.
+export const Welcome: FC = () => (
+  <main class="signin">
+    <img src="/sarza-logo.png" alt="SARZA Search &amp; Rescue" style="width: 132px; height: 132px; align-self: center;" />
+    <div class="stack" style="gap: 10px;">
+      <h1 class="display">Beacon</h1>
+      <p class="lead">File a plan before you head out. If you're not back when you expect to be, we'll check in on you. If you don't respond, or call for help, SARZA will help you get home safe.</p>
+    </div>
+    <a class="btn yellow big" href="/profile">Get started</a>
+    <p style="margin: 0; font-size: 14px;">Turn a bad day into a great story.</p>
+    <div class="grow"></div>
+    <p style="margin: 0; font-size: 14px;"><a href="/login" style="color: inherit;">I'm a SARZA operator</a></p>
+  </main>
+)
+
 // ---------- profile (4 steps) ----------
 
 export const ProfileForm: FC<{ user: User | null; error?: string; saved?: boolean; draft?: Partial<User> }> = ({ user, error, saved, draft }) => {
@@ -22,7 +39,7 @@ export const ProfileForm: FC<{ user: User | null; error?: string; saved?: boolea
   const v: Partial<User> | null = draft ?? user
   return (
   <div class="flow">
-    <FlowHead total={4} backHref={user ? '/' : '/login'} />
+    <FlowHead total={4} backHref="/" />
     <main>
       <form method="post" action="/api/profile" enctype="multipart/form-data" class="stack grow" data-steps>
         <Step title="Who are you?" icon="user" eyebrowLabel="Your profile" lead="Tell us once. After that, each trip takes a minute to file.">

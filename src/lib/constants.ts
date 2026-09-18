@@ -32,9 +32,11 @@ export const RELATIONS = ['Partner or spouse', 'Parent', 'Child', 'Brother or si
 
 // South Africa's official languages, by their own names. The UI is English-only for now;
 // the choice is stored so translations can follow.
+// What an operator would need to speak to this person. Ordered by where visitors to
+// South Africa come from, the same logic as COUNTRY_CODES below.
 export const LANGUAGES = {
-  en: 'English', af: 'Afrikaans', zu: 'isiZulu', xh: 'isiXhosa', st: 'Sesotho', tn: 'Setswana',
-  nso: 'Sepedi', ts: 'Xitsonga', ss: 'siSwati', ve: 'Tshivenḓa', nr: 'isiNdebele',
+  en: 'English', de: 'German', nl: 'Dutch', fr: 'French', es: 'Spanish',
+  it: 'Italian', pt: 'Portuguese', zh: 'Mandarin',
 } as const
 export type Language = keyof typeof LANGUAGES
 

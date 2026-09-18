@@ -90,7 +90,7 @@ describe('GET /board/trips/:id', () => {
     const o = await makeOperator()
     const e = await makeExplorer({
       name: 'Sipho Dlamini', emergency_name: 'Lindiwe', emergency_relation: 'Brother or sister', birthday: '1990-01-01',
-      gender: 'Male', height_cm: 182, weight_kg: 74, shoe_size: '9', language: 'zu',
+      gender: 'Male', height_cm: 182, weight_kg: 74, shoe_size: '9', language: 'de',
     })
     const t = await startTrip(env.DB, e.user.id, {
       ...base, activity: 'mtb', destination_text: 'Constantiaberg mast', return_by: Date.now() + 1000,
@@ -101,7 +101,7 @@ describe('GET /board/trips/:id', () => {
     expect(html).toContain('With them · 2')
     expect(html).toContain('tel:+27725550114')
     expect(html).toContain('No number given')
-    expect(html).toContain('isiZulu')
+    expect(html).toContain('German')
     expect(html).toContain('182 cm')
     expect(html).toContain('UK 9')
     expect(html).toContain('(brother or sister)')

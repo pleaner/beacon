@@ -79,7 +79,7 @@ describe('POST /api/profile', () => {
       method: 'POST',
       body: form({
         name: 'Thandi Mokoena', phone: '082 555 0147', phone_country: '27', email: 'Thandi@Example.com',
-        birthday: '1992-03-12', gender: 'Female', language: 'zu', height_cm: '168', weight_kg: '61', shoe_size: '6.5',
+        birthday: '1992-03-12', gender: 'Female', language: 'de', height_cm: '168', weight_kg: '61', shoe_size: '6.5',
         emergency_name: 'Lindiwe', emergency_relation: 'Brother or sister', emergency_phone: '7700 900123', emergency_phone_country: '44',
       }),
       redirect: 'manual',
@@ -90,7 +90,7 @@ describe('POST /api/profile', () => {
     expect(u.phone).toBe('+27825550147')
     expect(u.email).toBe('thandi@example.com')
     expect(u.emergency_phone).toBe('+447700900123')
-    expect(u).toMatchObject({ birthday: '1992-03-12', gender: 'Female', language: 'zu', height_cm: 168, weight_kg: 61, shoe_size: '6.5', emergency_relation: 'Brother or sister' })
+    expect(u).toMatchObject({ birthday: '1992-03-12', gender: 'Female', language: 'de', height_cm: 168, weight_kg: 61, shoe_size: '6.5', emergency_relation: 'Brother or sister' })
   })
 
   it('drops out-of-range or unknown profile details instead of failing', async () => {

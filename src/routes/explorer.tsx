@@ -7,13 +7,13 @@ import { requireRole } from '../lib/middleware'
 import { canSeePhoto } from '../lib/photos'
 import { getOpenTrip, lastTripForUser, previousGearPhotos, previousShoePhotos } from '../lib/trips'
 import { Layout } from '../views/layout'
-import { ActiveTrip, Home, HelpScreen, NewTripForm, ProfileForm, type TripDraft } from '../views/explorer'
+import { ActiveTrip, Home, HelpScreen, NewTripForm, ProfileForm, Welcome, type TripDraft } from '../views/explorer'
 
 export const explorer = new Hono<AppEnv>()
 
 explorer.get('/', async (c) => {
   const user = c.var.user
-  if (!user) return c.redirect('/profile')
+  if (!user) return c.html(<Layout title="Welcome" user={null} variant="bare" bodyClass="navy"><Welcome /></Layout>)
   if (user.role === 'operator' || user.role === 'admin') return c.redirect('/board')
   if (await getOpenTrip(c.env.DB, user.id)) return c.redirect('/trip')
   const last = await lastTripForUser(c.env.DB, user.id)

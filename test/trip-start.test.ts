@@ -24,10 +24,14 @@ describe('parseReturnBy', () => {
 })
 
 describe('GET /', () => {
-  it('redirects anonymous to /profile', async () => {
+  it('welcomes an anonymous visitor instead of dropping them in the profile form', async () => {
     const res = await exports.default.fetch(`${BASE}/`, { redirect: 'manual' })
-    expect(res.status).toBe(302)
-    expect(res.headers.get('location')).toBe('/profile')
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('<h1 class="display">Beacon</h1>')
+    expect(html).toContain('File a plan before you head out')
+    expect(html).toContain('href="/profile"')
+    expect(html).toContain('href="/login"')
   })
 
   it('shows plan button when no open trip', async () => {
