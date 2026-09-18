@@ -17,7 +17,7 @@ explorer.get('/', async (c) => {
   if (user.role === 'operator' || user.role === 'admin') return c.redirect('/board')
   if (await getOpenTrip(c.env.DB, user.id)) return c.redirect('/trip')
   const last = await lastTripForUser(c.env.DB, user.id)
-  const notice = c.req.query('back') === '1' ? "Welcome back. We've closed your trip." : c.req.query('cancelled') === '1' ? "Glad you're okay. We've let SARZA know." : undefined
+  const notice = c.req.query('back') === '1' ? "Welcome back. We've closed your trip." : undefined
   return c.html(
     <Layout title="Home" user={user} bodyAttrs={{ 'data-vapid': c.env.VAPID_PUBLIC_KEY }}>
       <Home user={user} last={last} welcome={c.req.query('welcome') === '1'} notice={notice} />

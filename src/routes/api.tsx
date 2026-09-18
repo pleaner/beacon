@@ -10,7 +10,7 @@ import { normalizePhone } from '../lib/phone'
 import { getPlaceLookup } from '../lib/places'
 import { savePhoto } from '../lib/photos'
 import { getSender, helpPayload, pushToRoles } from '../lib/push'
-import { cancelHelp, extendTrip, getTrip, markBack, markOperatorsAlerted, operatorClose, parseReturnBy, requestHelp, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
+import { cancelHelp, extendTrip, getTrip, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
 import { newTripPage, profilePage } from './explorer'
 
 export const api = new Hono<AppEnv>()
@@ -214,14 +214,14 @@ api.post('/trips/:id/extend', requireApiRole('explorer'), async (c) => {
     return_by = minutes && minutes > 0 ? now + minutes * 60_000 : null
   }
   if (!return_by) return tripFail(c, 'Pick a time in the future', 400)
-  if (!(await extendTrip(c.env.DB, trip.id, return_by, now))) return tripFail(c, 'Trip cannot be extended', 409)
+  if (!(await extendTrip(c.env.DB, trip.id, return_by, now))) return tripFail(c, "We couldn't add time. Your trip may have ended already.", 409)
   return done(c, { return_by }, '/trip')
 })
 
 api.post('/trips/:id/back', requireApiRole('explorer'), async (c) => {
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
-  if (!(await markBack(c.env.DB, trip.id, Date.now()))) return tripFail(c, 'Trip is not open', 409)
+  if (!(await markBack(c.env.DB, trip.id, Date.now()))) return tripFail(c, 'That trip has already ended.', 409)
   return done(c, { ok: true }, '/?back=1')
 })
 
@@ -230,9 +230,9 @@ api.post('/trips/:id/help', requireApiRole('explorer'), async (c) => {
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
   if (trip.status === 'help') return done(c, { ok: true }, '/trip')
-  if (!(await requestHelp(c.env.DB, trip.id, Date.now()))) return tripFail(c, 'Trip is not open', 409)
+  if (!(await requestHelp(c.env.DB, trip.id, Date.now()))) return tripFail(c, 'That trip has already ended. Phone SARZA if you need help.', 409)
   const { sent } = await pushToRoles(c.env.DB, getSender(c.env), ['operator', 'admin'], helpPayload(user, trip))
-  if (sent > 0) await markOperatorsAlerted(c.env.DB, trip.id, Date.now())
+  if (sent > 0) await markHelpAlerted(c.env.DB, trip.id, Date.now())
   else console.error('help request reached no operators', trip.id)
   return done(c, { ok: true }, '/trip')
 })
@@ -240,8 +240,8 @@ api.post('/trips/:id/help', requireApiRole('explorer'), async (c) => {
 api.post('/trips/:id/cancel', requireApiRole('explorer'), async (c) => {
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
-  if (!(await cancelHelp(c.env.DB, trip.id, Date.now()))) return tripFail(c, 'Trip is not in help', 409)
-  return done(c, { ok: true }, '/?cancelled=1')
+  if (!(await cancelHelp(c.env.DB, trip.id))) return tripFail(c, "You've already cancelled that call for help.", 409)
+  return done(c, { ok: true }, '/trip')
 })
 
 api.post('/trips/:id/positions', requireApiRole('explorer'), async (c) => {

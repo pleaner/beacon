@@ -103,15 +103,23 @@ describe('transitions', () => {
     expect(await requestHelp(env.DB, t.id, 10_003)).toBe(false)
   })
 
-  it('cancelHelp only from help, closes as cancelled', async () => {
+  it('cancelHelp only from help, and puts the trip back where it was', async () => {
     const { t } = await trip()
-    expect(await cancelHelp(env.DB, t.id, 2000)).toBe(false)
+    expect(await cancelHelp(env.DB, t.id)).toBe(false)
     await requestHelp(env.DB, t.id, 2000)
-    expect(await cancelHelp(env.DB, t.id, 2001)).toBe(true)
+    expect(await cancelHelp(env.DB, t.id)).toBe(true)
     const cur = await getTrip(env.DB, t.id)
-    expect(cur?.status).toBe('closed')
-    expect(cur?.closed_reason).toBe('cancelled')
-    expect(cur?.closed_at).toBe(2001)
+    expect(cur?.status).toBe('active')
+    expect(cur?.closed_at).toBeNull()
+    expect(cur?.closed_reason).toBeNull()
+  })
+
+  it('cancelHelp returns an overdue trip to overdue, not active', async () => {
+    const { t } = await trip()
+    await markOverdue(env.DB, t.id, 10_001)
+    await requestHelp(env.DB, t.id, 10_002)
+    expect(await cancelHelp(env.DB, t.id)).toBe(true)
+    expect((await getTrip(env.DB, t.id))?.status).toBe('overdue')
   })
 
   it('operatorClose closes any open trip, and closed is final', async () => {

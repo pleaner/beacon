@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
 import { addSubscription, insertPosition, listPositions, setSetting } from '../src/lib/db'
 import { runCron } from '../src/lib/cron'
-import { getTrip, markOperatorsAlerted, markOverdue, requestHelp, startTrip, type NewTrip } from '../src/lib/trips'
+import { cancelHelp, getTrip, markOperatorsAlerted, markOverdue, requestHelp, startTrip, type NewTrip } from '../src/lib/trips'
 import { fakeSender, makeExplorer, makeOperator } from './helpers'
 
 const base: NewTrip = {
@@ -92,7 +92,7 @@ describe('runCron', () => {
     const f = fakeSender()
     const r = await runCron(env, f.send, 2000)
     expect(r.helpAlerted).toBe(0)
-    expect((await getTrip(env.DB, t.id))?.operators_alerted_at).toBeNull()
+    expect((await getTrip(env.DB, t.id))?.help_alerted_at).toBeNull()
   })
 
   it('pushes a help trip once an operator subscribes, then stops', async () => {
@@ -108,10 +108,23 @@ describe('runCron', () => {
     expect(r.helpAlerted).toBe(1)
     const push = f.sent.find((s) => s.endpoint === 'https://push.test/help-op')
     expect(push?.payload.title).toBe('HELP: Zola')
-    expect((await getTrip(env.DB, t.id))?.operators_alerted_at).toBe(3000)
+    expect((await getTrip(env.DB, t.id))?.help_alerted_at).toBe(3000)
     r = await runCron(env, f.send, 4000)
     expect(r.helpAlerted).toBe(0)
     expect(f.sent.filter((s) => s.endpoint === 'https://push.test/help-op')).toHaveLength(1)
+  })
+
+  it('does not alert operators twice when an overdue trip calls for help and cancels', async () => {
+    const { t } = await setup()
+    const f = fakeSender()
+    await runCron(env, f.send, 10_001)
+    let r = await runCron(env, f.send, 10_001 + GRACE)
+    expect(r.alerted).toBe(1)
+    await requestHelp(env.DB, t.id, 11_000)
+    expect(await cancelHelp(env.DB, t.id)).toBe(true)
+    expect((await getTrip(env.DB, t.id))?.status).toBe('overdue')
+    r = await runCron(env, f.send, 12_000 + GRACE)
+    expect(r.alerted).toBe(0)
   })
 
   it('re-alerts a trip that goes overdue, alerts operators, then moves to help', async () => {
@@ -120,7 +133,8 @@ describe('runCron', () => {
     await markOverdue(env.DB, t.id, 10_000)
     await markOperatorsAlerted(env.DB, t.id, 20_000)
     await requestHelp(env.DB, t.id, 20_000)
-    expect((await getTrip(env.DB, t.id))?.operators_alerted_at).toBeNull()
+    expect((await getTrip(env.DB, t.id))?.operators_alerted_at).toBe(20_000)
+    expect((await getTrip(env.DB, t.id))?.help_alerted_at).toBeNull()
 
     const f = fakeSender()
     let r = await runCron(env, f.send, 21_000)
@@ -130,7 +144,7 @@ describe('runCron', () => {
     r = await runCron(env, f.send, 22_000)
     expect(r.helpAlerted).toBe(1)
     expect(f.sent.find((s) => s.endpoint === 'https://push.test/help-op-2')?.payload.title).toBe('HELP: Bongani')
-    expect((await getTrip(env.DB, t.id))?.operators_alerted_at).toBe(22_000)
+    expect((await getTrip(env.DB, t.id))?.help_alerted_at).toBe(22_000)
   })
 
   it('prunes positions older than 30 days', async () => {

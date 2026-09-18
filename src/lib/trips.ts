@@ -23,6 +23,7 @@ export interface Trip {
   status: TripStatus
   prompted_at: number | null
   operators_alerted_at: number | null
+  help_alerted_at: number | null
   closed_at: number | null
   closed_reason: ClosedReason | null
   created_at: number
@@ -160,12 +161,16 @@ export function markBack(db: DB, id: string, now: number) {
 }
 export function requestHelp(db: DB, id: string, _now: number) {
   return changed(
-    db.prepare(`UPDATE trips SET status = 'help', operators_alerted_at = NULL WHERE id = ? AND status IN ('active','overdue')`).bind(id),
+    db.prepare(`UPDATE trips SET status = 'help', help_alerted_at = NULL WHERE id = ? AND status IN ('active','overdue')`).bind(id),
   )
 }
-export function cancelHelp(db: DB, id: string, now: number) {
+// Cancelling a help call is not the end of the trip: it goes back to where it was.
+// prompted_at is only ever set by markOverdue, so it says which state that was.
+export function cancelHelp(db: DB, id: string) {
   return changed(
-    db.prepare(`UPDATE trips SET status = 'closed', closed_at = ?, closed_reason = 'cancelled' WHERE id = ? AND status = 'help'`).bind(now, id),
+    db
+      .prepare(`UPDATE trips SET status = CASE WHEN prompted_at IS NULL THEN 'active' ELSE 'overdue' END WHERE id = ? AND status = 'help'`)
+      .bind(id),
   )
 }
 export function operatorClose(db: DB, id: string, now: number) {
@@ -182,9 +187,12 @@ export function markOverdue(db: DB, id: string, now: number) {
 }
 export function markOperatorsAlerted(db: DB, id: string, now: number) {
   return changed(
-    db
-      .prepare(`UPDATE trips SET operators_alerted_at = ? WHERE id = ? AND status IN ('overdue','help') AND operators_alerted_at IS NULL`)
-      .bind(now, id),
+    db.prepare(`UPDATE trips SET operators_alerted_at = ? WHERE id = ? AND status = 'overdue' AND operators_alerted_at IS NULL`).bind(now, id),
+  )
+}
+export function markHelpAlerted(db: DB, id: string, now: number) {
+  return changed(
+    db.prepare(`UPDATE trips SET help_alerted_at = ? WHERE id = ? AND status = 'help' AND help_alerted_at IS NULL`).bind(now, id),
   )
 }
 
@@ -202,7 +210,7 @@ export async function findTripsToAlertOperators(db: DB, now: number, graceMs: nu
   ).results
 }
 export async function findHelpTripsToAlert(db: DB): Promise<Trip[]> {
-  return (await db.prepare(`SELECT * FROM trips WHERE status = 'help' AND operators_alerted_at IS NULL`).all<Trip>()).results
+  return (await db.prepare(`SELECT * FROM trips WHERE status = 'help' AND help_alerted_at IS NULL`).all<Trip>()).results
 }
 
 // board

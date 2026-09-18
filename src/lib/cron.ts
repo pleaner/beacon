@@ -1,6 +1,6 @@
 import { getSetting, getUserById, prunePositions } from './db'
 import { helpPayload, pushToRoles, pushToUser, type PushSender } from './push'
-import { findHelpTripsToAlert, findTripsToAlertOperators, findTripsToPrompt, markOperatorsAlerted, markOverdue, tripLine } from './trips'
+import { findHelpTripsToAlert, findTripsToAlertOperators, findTripsToPrompt, markHelpAlerted, markOperatorsAlerted, markOverdue, tripLine } from './trips'
 
 export const POSITION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -53,7 +53,7 @@ export async function runCron(env: Env, send: PushSender, now: number) {
       const user = await getUserById(db, trip.user_id)
       const { sent } = await pushToRoles(db, send, ['operator', 'admin'], helpPayload({ name: user?.name ?? 'unknown' }, trip))
       if (sent > 0) {
-        await markOperatorsAlerted(db, trip.id, now)
+        await markHelpAlerted(db, trip.id, now)
         helpAlerted++
       }
     } catch (e) {

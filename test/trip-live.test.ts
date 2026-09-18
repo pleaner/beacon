@@ -162,16 +162,18 @@ describe('help and cancel', () => {
     setSenderForTests(fakeSender().send)
     const res = await call(`/api/trips/${t.id}/help`, { cookie, ...json({}) })
     expect(res.status).toBe(200)
-    expect((await getTrip(env.DB, t.id))!.operators_alerted_at).not.toBeNull()
+    expect((await getTrip(env.DB, t.id))!.help_alerted_at).not.toBeNull()
   })
 
-  it('cancel closes as cancelled', async () => {
+  it('cancel goes back to the trip and leaves it open', async () => {
     const { t, cookie } = await live()
     setSenderForTests(fakeSender().send)
     await call(`/api/trips/${t.id}/help`, { cookie, ...json({}) })
     const res = await call(`/api/trips/${t.id}/cancel`, { cookie, method: 'POST' })
-    expect(res.headers.get('location')).toBe('/?cancelled=1')
-    expect((await getTrip(env.DB, t.id))!.closed_reason).toBe('cancelled')
+    expect(res.headers.get('location')).toBe('/trip')
+    const cur = await getTrip(env.DB, t.id)!
+    expect(cur!.status).toBe('active')
+    expect(cur!.closed_at).toBeNull()
   })
 })
 
