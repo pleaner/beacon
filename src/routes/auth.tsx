@@ -62,7 +62,8 @@ auth.post('/auth/verify', async (c) => {
 })
 
 auth.post('/logout', async (c) => {
-  if (c.var.user) await updateUser(c.env.DB, c.var.user.id, { token_hash: null })
+  const user = c.var.user
+  if (user) await updateUser(c.env.DB, user.id, { token_hash: null })
   deleteCookie(c, COOKIE_NAME, { path: '/' })
-  return c.redirect('/login')
+  return c.redirect(user && !isOps(user.role) ? '/' : '/login')
 })

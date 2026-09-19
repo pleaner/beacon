@@ -105,6 +105,13 @@ describe('login flow', () => {
     expect(res.headers.get('set-cookie')).toMatch(/beacon=;|Max-Age=0/)
   })
 
+  it('logout sends an explorer to the welcome screen, not the operator sign-in', async () => {
+    const e = await makeExplorer()
+    const res = await exports.default.fetch(`${BASE}/logout`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, redirect: 'manual' })
+    expect(res.headers.get('location')).toBe('/')
+    expect(res.headers.get('set-cookie')).toMatch(/beacon=;|Max-Age=0/)
+  })
+
   it('logout revokes the token, so the old cookie no longer signs anyone in', async () => {
     const o = await makeOperator()
     await exports.default.fetch(`${BASE}/logout`, { method: 'POST', headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })

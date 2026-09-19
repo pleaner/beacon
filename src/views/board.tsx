@@ -94,7 +94,7 @@ const TripRow: FC<{ r: BoardRow; now: number }> = ({ r, now }) => (
   </a>
 )
 
-function age(birthday: string | null, now: number): number | null {
+export function age(birthday: string | null, now: number): number | null {
   if (!birthday) return null
   const b = new Date(birthday + 'T00:00:00Z')
   if (isNaN(b.getTime())) return null
@@ -104,12 +104,9 @@ function age(birthday: string | null, now: number): number | null {
   return a
 }
 
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('')
+export const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('')
 
-export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; companions: Companion[]; now: number }> = ({ trip, user, positions, companions, now }) => {
-  const last = positions[0]
-  const checklist = JSON.parse(trip.checklist_json) as string[]
-  const first = user.name.split(' ')[0]
+export const PersonCard: FC<{ user: User; now: number }> = ({ user, now }) => {
   const years = age(user.birthday, now)
   const facts: Array<[string, string]> = []
   if (years != null) facts.push(['Age', String(years)])
@@ -118,6 +115,53 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
   if (user.height_cm) facts.push(['Height', `${user.height_cm} cm`])
   if (user.weight_kg) facts.push(['Weight', `${user.weight_kg} kg`])
   if (user.shoe_size) facts.push(['Shoe', `UK ${user.shoe_size}`])
+  return (
+    <section class="card">
+      <h2>Person</h2>
+      <div class="row" style="gap: 14px;">
+        {user.photo_key
+          ? <a href={`/photos/${user.photo_key}`}><img src={`/photos/${user.photo_key}`} alt="Profile picture" style="width: 64px; height: 64px; border-radius: 32px; object-fit: cover;" /></a>
+          : <span class="avatar soft" style="width: 64px; height: 64px; border-radius: 32px;"><Icon name="user" size={28} /></span>}
+        <div class="who2"><strong>{user.name}</strong><small class="muted">{user.email ?? ''}</small></div>
+      </div>
+      {facts.length > 0 && <dl class="facts">{facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
+      {user.description && <p style="margin: 0;">{user.description}</p>}
+    </section>
+  )
+}
+
+export const EmergencyCard: FC<{ user: User }> = ({ user }) => (
+  <section class="card">
+    <h2>Emergency contact</h2>
+    {user.emergency_name || user.emergency_phone ? (
+      <ul class="list">
+        <li>
+          <span class="avatar soft">{initials(user.emergency_name ?? '?')}</span>
+          <div class="who2">
+            <strong>{user.emergency_name ?? 'Not named'}</strong>
+            <small>{[user.emergency_relation, formatPhone(user.emergency_phone)].filter(Boolean).join(' · ')}</small>
+          </div>
+          {user.emergency_phone && <a class="outline-btn" href={`tel:${user.emergency_phone}`} aria-label={`Phone ${user.emergency_name ?? 'emergency contact'}`}><Icon name="phone" size={20} /></a>}
+        </li>
+      </ul>
+    ) : <p class="muted" style="margin: 0;">None given.</p>}
+  </section>
+)
+
+const PositionRow: FC<{ p: Position; now: number }> = ({ p, now }) => (
+  <li>
+    <div class="who2">
+      <span class="pos">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</span>
+      <small>{ago(p.at, now)}{p.accuracy != null ? ` · ±${Math.round(p.accuracy)} m` : ''}{p.battery != null ? ` · ${p.battery}%` : ''}</small>
+    </div>
+    <a href={mapsUrl(p.lat, p.lng)} class="row" style="min-height: 44px; font-size: 14px; font-weight: 600; gap: 4px;">Map<Icon name="ext" size={15} /></a>
+  </li>
+)
+
+export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; companions: Companion[]; now: number }> = ({ trip, user, positions, companions, now }) => {
+  const last = positions[0]
+  const checklist = JSON.parse(trip.checklist_json) as string[]
+  const first = user.name.split(' ')[0]
   const place = tripPlace(trip)
   const photo = (key: string | null, label: string, icon: IconName, cls?: string) =>
     key ? (
@@ -146,19 +190,17 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
       </div>
 
       <section class="card">
-        <h2>Positions</h2>
+        <h2>Last position</h2>
         {positions.length === 0 ? <p class="muted" style="margin: 0;">None yet.</p> : (
-          <ul class="list">
-            {positions.map((p) => (
-              <li>
-                <div class="who2">
-                  <span class="pos">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</span>
-                  <small>{ago(p.at, now)}{p.accuracy != null ? ` · ±${Math.round(p.accuracy)} m` : ''}{p.battery != null ? ` · ${p.battery}%` : ''}</small>
-                </div>
-                <a href={mapsUrl(p.lat, p.lng)} class="row" style="min-height: 44px; font-size: 14px; font-weight: 600; gap: 4px;">Map<Icon name="ext" size={15} /></a>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul class="list"><PositionRow p={positions[0]!} now={now} /></ul>
+            {positions.length > 1 && (
+              <details class="more">
+                <summary>{positions.length - 1} earlier {positions.length === 2 ? 'position' : 'positions'}</summary>
+                <ul class="list">{positions.slice(1).map((p) => <PositionRow p={p} now={now} />)}</ul>
+              </details>
+            )}
+          </>
         )}
       </section>
 
@@ -203,35 +245,8 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
         </div>
       </section>
 
-      <section class="card">
-        <h2>Person</h2>
-        <div class="row" style="gap: 14px;">
-          {user.photo_key
-            ? <a href={`/photos/${user.photo_key}`}><img src={`/photos/${user.photo_key}`} alt="Profile picture" style="width: 64px; height: 64px; border-radius: 32px; object-fit: cover;" /></a>
-            : <span class="avatar soft" style="width: 64px; height: 64px; border-radius: 32px;"><Icon name="user" size={28} /></span>}
-          <div class="who2"><strong>{user.name}</strong><small class="muted">{user.email ?? ''}</small></div>
-        </div>
-        {facts.length > 0 && (
-          <dl class="facts">{facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
-        )}
-        {user.description && <p style="margin: 0;">{user.description}</p>}
-      </section>
-
-      <section class="card">
-        <h2>Emergency contact</h2>
-        {user.emergency_name || user.emergency_phone ? (
-          <ul class="list">
-            <li>
-              <span class="avatar soft">{initials(user.emergency_name ?? '?')}</span>
-              <div class="who2">
-                <strong>{user.emergency_name ?? 'Not named'}</strong>
-                <small>{[user.emergency_relation, formatPhone(user.emergency_phone)].filter(Boolean).join(' · ')}</small>
-              </div>
-              {user.emergency_phone && <a class="outline-btn" href={`tel:${user.emergency_phone}`} aria-label={`Phone ${user.emergency_name ?? 'emergency contact'}`}><Icon name="phone" size={20} /></a>}
-            </li>
-          </ul>
-        ) : <p class="muted" style="margin: 0;">None given.</p>}
-      </section>
+      <PersonCard user={user} now={now} />
+      <EmergencyCard user={user} />
 
       {trip.status !== 'closed' && (
         <section class="card">

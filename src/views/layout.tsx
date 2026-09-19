@@ -103,6 +103,14 @@ const AppMenu: FC<{ user: User }> = ({ user }) => {
             </a>
           )}
         </div>
+        <div class="foot">
+          <form method="post" action="/logout" onsubmit={isOps ? undefined : "return confirm('Log out? This phone has no password, so you would start a new profile and lose this one.')"}>
+            <button class="item" type="submit">
+              <Icon name="logout" size={18} />
+              <span>Log out</span>
+            </button>
+          </form>
+        </div>
       </nav>
     </div>
   )

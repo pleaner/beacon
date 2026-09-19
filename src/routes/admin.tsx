@@ -1,10 +1,10 @@
 import { Hono, type Context } from 'hono'
 import type { AppEnv } from '../env'
 import { ACTIVITIES, type Activity } from '../lib/constants'
-import { createUser, deleteUser, getChecklist, getSetting, getUserByEmail, listUsers, setChecklist, setSetting, updateUser, type Role } from '../lib/db'
+import { createUser, deleteUser, getChecklist, getSetting, getUserByEmail, getUserById, listUsers, setChecklist, setSetting, updateUser, type Role } from '../lib/db'
 import { readBody, requireRole, str } from '../lib/middleware'
 import { getSender, pushToRoles } from '../lib/push'
-import { ADMIN_TABS, AdminPage, type AdminTab } from '../views/admin'
+import { ADMIN_TABS, AdminPage, AdminUserPage, type AdminTab } from '../views/admin'
 import { listOpenTrips } from '../lib/trips'
 import { Layout } from '../views/layout'
 
@@ -30,7 +30,20 @@ async function render(c: Context<AppEnv>, over: { tab?: string; error?: string; 
   )
 }
 
+async function renderUser(c: Context<AppEnv>, id: string, over: { error?: string; status?: 200 | 400 } = {}) {
+  const [user, open] = await Promise.all([getUserById(c.env.DB, id), listOpenTrips(c.env.DB)])
+  if (!user) return c.text('Not found', 404)
+  return c.html(
+    <Layout title={user.name} user={c.var.user} current="users" helpCount={open.filter((t) => t.status === 'help').length}>
+      <AdminUserPage user={user} me={c.var.user!} now={Date.now()} saved={c.req.query('saved') === '1'} error={over.error} />
+    </Layout>,
+    over.status ?? 200,
+  )
+}
+
 admin.get('/admin', (c) => render(c))
+
+admin.get('/admin/users/:id', (c) => renderUser(c, c.req.param('id')))
 
 admin.post('/admin/users', async (c) => {
   const b = await readBody(c)
@@ -51,19 +64,20 @@ admin.post('/admin/users', async (c) => {
 
 admin.post('/admin/users/:id', async (c) => {
   const b = await readBody(c)
+  const id = c.req.param('id')
   const role = str(b, 'role') as Role | null
   const organisation = str(b, 'organisation')
-  if (!role || !['explorer', 'operator', 'admin'].includes(role)) return render(c, { tab: 'users', error: 'Bad role', status: 400 })
-  if (c.req.param('id') === c.var.user!.id) return render(c, { tab: 'users', error: "You can't change your own role", status: 400 })
+  if (!role || !['explorer', 'operator', 'admin'].includes(role)) return renderUser(c, id, { error: 'Bad role', status: 400 })
+  if (id === c.var.user!.id) return renderUser(c, id, { error: "You can't change your own role", status: 400 })
   if ((role === 'operator' || role === 'admin') && !organisation) {
-    return render(c, { tab: 'users', error: 'Organisation is required for operators and admins', status: 400 })
+    return renderUser(c, id, { error: 'Organisation is required for operators and admins', status: 400 })
   }
-  await updateUser(c.env.DB, c.req.param('id'), { role, organisation })
-  return c.redirect('/admin?tab=users&saved=1', 303)
+  await updateUser(c.env.DB, id, { role, organisation })
+  return c.redirect(`/admin/users/${id}?saved=1`, 303)
 })
 
 admin.post('/admin/users/:id/delete', async (c) => {
-  if (c.req.param('id') === c.var.user!.id) return render(c, { tab: 'users', error: "You can't delete yourself", status: 400 })
+  if (c.req.param('id') === c.var.user!.id) return renderUser(c, c.req.param('id'), { error: "You can't delete yourself", status: 400 })
   await deleteUser(c.env.DB, c.req.param('id'))
   return c.redirect('/admin?tab=users', 303)
 })

@@ -40,6 +40,30 @@ describe('users tab', () => {
     expect(u?.token_hash).toBeNull()
   })
 
+  it('searches across name, email and phone, and links each row to the profile', async () => {
+    const a = await makeAdmin()
+    const e = await makeExplorer({ name: 'Thandi Mokoena', email: 'thandi@example.test', phone: '+27820007777' })
+    await makeExplorer({ name: 'Someone Else', email: 'else@example.test', phone: '+27820001234' })
+    const get = async (q: string) =>
+      (await exports.default.fetch(`${BASE}/admin?tab=users&q=${encodeURIComponent(q)}`, { headers: { cookie: cookieFor(a.token) } })).text()
+    for (const q of ['thandi mok', 'THANDI@EXAMPLE', '820007777']) {
+      const html = await get(q)
+      expect(html).toContain(`/admin/users/${e.user.id}`)
+      expect(html).not.toContain('Someone Else')
+    }
+  })
+
+  it('opens a user profile', async () => {
+    const a = await makeAdmin()
+    const e = await makeExplorer({ name: 'Thandi Mokoena', emergency_name: 'Sipho', emergency_phone: '+27820009999' })
+    const res = await exports.default.fetch(`${BASE}/admin/users/${e.user.id}`, { headers: { cookie: cookieFor(a.token) } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Thandi Mokoena')
+    expect(html).toContain('Sipho')
+    expect(await (await exports.default.fetch(`${BASE}/admin/users/nope`, { headers: { cookie: cookieFor(a.token) } })).status).toBe(404)
+  })
+
   it('requires every field for a new operator', async () => {
     const a = await makeAdmin()
     const res = await exports.default.fetch(`${BASE}/admin/users`, form(cookieFor(a.token), { name: 'X', email: 'x@sarza.test', role: 'operator' }))
