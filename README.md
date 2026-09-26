@@ -24,18 +24,15 @@ Magic links print in the dev console when RESEND_API_KEY is unset.
 
 ## Deploy
 
-    npm run migrate:staging && npm run deploy:staging
     npm run migrate:prod && npm run deploy
 
-Secrets per environment, set with `wrangler secret put NAME [--env staging]`: `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `RESEND_API_KEY`. Production serves https://guardian.pleaner.com.
+Run the migration before the deploy. Local dev uses `npm run migrate:local` and `npm run dev`. Secrets, set with `wrangler secret put NAME`: `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `RESEND_API_KEY`. Production serves https://guardian.pleaner.com.
 
 ## First admin
 
 There is no sign-up for admins. Insert a row by hand:
 
     npx wrangler d1 execute DB --remote --command "INSERT INTO users (id, role, name, phone, email, organisation, consent_contact, created_at) VALUES (lower(hex(randomblob(16))), 'admin', 'Jane Admin', '+27821234567', 'jane@sarza.org.za', 'SARZA', 1, unixepoch() * 1000)"
-
-Add `--env staging` to target the staging database instead.
 
 ## Device checks
 
@@ -63,7 +60,7 @@ The screens follow the Guardian by SARZA canvas: navy, red and yellow from the S
 - Phones are stored as E.164 (`+27821234567`). Forms send a country code and a national number.
 - Operators get a slide-out menu. Admin tabs moved into it.
 
-Migration `0002_design_refresh.sql` adds the new columns and the companions table. Run `npm run migrate:staging` / `npm run migrate:prod` before deploying.
+Migration `0002_design_refresh.sql` adds the new columns and the companions table. Run `npm run migrate:prod` before deploying.
 
 ## Known gaps
 

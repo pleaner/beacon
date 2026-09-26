@@ -5,12 +5,10 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "deploy:staging": "wrangler deploy --env staging",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
     "migrate:local": "wrangler d1 migrations apply DB --local",
-    "migrate:staging": "wrangler d1 migrations apply DB --env staging --remote",
     "migrate:prod": "wrangler d1 migrations apply DB --remote"
   },
   "dependencies": {
