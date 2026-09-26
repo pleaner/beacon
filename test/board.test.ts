@@ -122,6 +122,66 @@ describe('GET /board/trips/:id', () => {
   })
 })
 
+describe('GET /board/trips/:id/brief', () => {
+  it('refuses the signed-out and explorers', async () => {
+    const e = await makeExplorer()
+    const t = await startTrip(env.DB, e.user.id, { ...base, return_by: Date.now() + 1000 }, Date.now())
+    let res = await exports.default.fetch(`${BASE}/board/trips/${t.id}/brief`, { redirect: 'manual' })
+    expect(res.headers.get('location')).toBe('/login')
+    res = await exports.default.fetch(`${BASE}/board/trips/${t.id}/brief`, { headers: { cookie: cookieFor(e.token) } })
+    expect(res.status).toBe(403)
+  })
+
+  it('prints the trip facts and positions, linked from the trip view', async () => {
+    const o = await makeOperator()
+    const e = await makeExplorer({ name: 'Nomsa Brief', phone: '+27821234567', emergency_name: 'Pieter' })
+    const t = await startTrip(env.DB, e.user.id, { ...base, photo_key: 'p/body.jpg', return_by: Date.now() + 1000 }, Date.now())
+    await setStartPlace(env.DB, t.id, 'Kirstenbosch gate')
+    await insertPosition(env.DB, { trip_id: t.id, lat: -33.9876, lng: 18.4321, accuracy: 7, battery: 33, altitude: 812.4, at: Date.now() - 60_000 })
+    const get = (path: string) => exports.default.fetch(`${BASE}${path}`, { headers: { cookie: cookieFor(o.token) } }).then((r) => r.text())
+    expect(await get(`/board/trips/${t.id}`)).toContain(`href="/board/trips/${t.id}/brief"`)
+    const html = await get(`/board/trips/${t.id}/brief`)
+    for (const s of ['Nomsa Brief', '+27 82 123 4567', 'Pieter', 'Trail run', 'Contour path', 'Kirstenbosch gate', '-33.96000, 18.41000',
+      'yellow shirt', 'src="/photos/p/body.jpg"', '-33.98760, 18.43210', '812 m', '33%', 'onclick="window.print()"']) {
+      expect(html).toContain(s)
+    }
+    expect(html).not.toContain('class="ops-bar"')
+  })
+})
+
+describe('GET /board/trips/:id/gpx', () => {
+  it('refuses the signed-out and explorers', async () => {
+    const e = await makeExplorer()
+    const t = await startTrip(env.DB, e.user.id, { ...base, return_by: Date.now() + 1000 }, Date.now())
+    let res = await exports.default.fetch(`${BASE}/board/trips/${t.id}/gpx`, { redirect: 'manual' })
+    expect(res.headers.get('location')).toBe('/login')
+    res = await exports.default.fetch(`${BASE}/board/trips/${t.id}/gpx`, { headers: { cookie: cookieFor(e.token) } })
+    expect(res.status).toBe(403)
+  })
+
+  it('downloads the start as a waypoint and positions as a track, oldest first, escaped', async () => {
+    const o = await makeOperator()
+    const e = await makeExplorer({ name: 'Tom & <Jerry>' })
+    const t = await startTrip(env.DB, e.user.id, { ...base, return_by: Date.now() + 1000 }, Date.UTC(2026, 8, 20, 6, 0))
+    await insertPosition(env.DB, { trip_id: t.id, lat: -33.95, lng: 18.42, accuracy: 5, battery: 80, altitude: 1062.5, at: Date.UTC(2026, 8, 20, 7, 0) })
+    await insertPosition(env.DB, { trip_id: t.id, lat: -33.94, lng: 18.43, accuracy: 5, battery: 70, at: Date.UTC(2026, 8, 20, 8, 0) })
+    const res = await exports.default.fetch(`${BASE}/board/trips/${t.id}/gpx`, { headers: { cookie: cookieFor(o.token) } })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/gpx+xml')
+    expect(res.headers.get('content-disposition')).toMatch(/^attachment; filename=".+\.gpx"$/)
+    const gpx = await res.text()
+    expect(gpx).toContain('<wpt lat="-33.96" lon="18.41"><time>2026-09-20T06:00:00.000Z</time>')
+    expect(gpx).toContain('Tom &#38; &#60;Jerry&#62;')
+    expect(gpx).not.toContain('<Jerry>')
+    const a = '<trkpt lat="-33.95" lon="18.42"><ele>1062.5</ele><time>2026-09-20T07:00:00.000Z</time></trkpt>'
+    const b = '<trkpt lat="-33.94" lon="18.43"><time>2026-09-20T08:00:00.000Z</time></trkpt>'
+    expect(gpx.indexOf(a)).toBeGreaterThan(gpx.indexOf('<trkseg>'))
+    expect(gpx.indexOf(b)).toBeGreaterThan(gpx.indexOf(a))
+    const trip = await (await exports.default.fetch(`${BASE}/board/trips/${t.id}`, { headers: { cookie: cookieFor(o.token) } })).text()
+    expect(trip).toContain(`href="/board/trips/${t.id}/gpx"`)
+  })
+})
+
 describe('POST /api/board/trips/:id/close', () => {
   it('closes any open trip as operator_closed', async () => {
     const o = await makeOperator()

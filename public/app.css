@@ -382,3 +382,15 @@ input:not([type=range]), select, textarea { transition: border-color .15s ease, 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Search brief. The browser's print dialog is the PDF export. */
+.brief-pos { width: 100%; border-collapse: collapse; font-size: 13px; }
+.brief-pos th, .brief-pos td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--za); }
+@media print {
+  .noprint { display: none !important; }
+  body { background: #fff; }
+  main { max-width: none; padding: 0; gap: 12px; }
+  .card { break-inside: avoid; border-color: #999; }
+  .brief-pos tr { break-inside: avoid; }
+  a { color: inherit; text-decoration: none; }
+}
