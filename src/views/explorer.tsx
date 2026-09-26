@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import { ACTIVITIES, COUNTRY_CODES, EXTEND_OPTIONS_MINUTES, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity } from '../lib/constants'
+import { ACTIVITIES, BLOOD_TYPES, COUNTRY_CODES, EXTEND_OPTIONS_MINUTES, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity } from '../lib/constants'
 import type { User } from '../lib/db'
 import { formatPhone, splitPhone } from '../lib/phone'
 import { toLocalInput, tripLine, type Trip } from '../lib/trips'
@@ -32,14 +32,14 @@ export const Welcome: FC = () => (
   </main>
 )
 
-// ---------- profile (4 steps) ----------
+// ---------- profile (5 steps) ----------
 
 export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partial<User> }> = ({ user, error, draft }) => {
   // After a failed save, show what was typed rather than what is stored.
   const v: Partial<User> | null = draft ?? user
   return (
   <div class="flow">
-    <FlowHead total={4} backHref="/" />
+    <FlowHead total={5} backHref="/" />
     <main>
       <form method="post" action="/api/profile" enctype="multipart/form-data" class="stack grow" data-steps>
         <Step title="Who are you?" icon="user" eyebrowLabel="Your profile" lead="Tell us once. After that, each trip takes a minute to file.">
@@ -86,6 +86,24 @@ export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partia
             <div class="field">
               <label for="p-shoe">Shoe size</label>
               <div class="control"><input id="p-shoe" name="shoe_size" type="text" inputmode="decimal" class="with-unit" value={v?.shoe_size ?? ''} placeholder="8" /><span class="unit">UK</span></div>
+            </div>
+          </div>
+        </Step>
+
+        <Step title="Anything medical?" icon="plus" eyebrowLabel="Your profile" lead="Only SARZA operators see this, to help rescuers look after you." skip>
+          <div class="stack">
+            <SelectField id="p-blood" name="blood_type" label="Blood type" value={v?.blood_type} placeholder="Don't know" options={opts(BLOOD_TYPES)} />
+            <div class="field">
+              <label for="p-allergies">Allergies</label>
+              <textarea id="p-allergies" name="allergies" placeholder="e.g. bee stings, penicillin">{v?.allergies ?? ''}</textarea>
+            </div>
+            <div class="field">
+              <label for="p-conditions">Conditions</label>
+              <textarea id="p-conditions" name="conditions" placeholder="e.g. asthma, diabetes, epilepsy">{v?.conditions ?? ''}</textarea>
+            </div>
+            <div class="field">
+              <label for="p-medication">Medication</label>
+              <textarea id="p-medication" name="medication" placeholder="What you take, and what you carry">{v?.medication ?? ''}</textarea>
             </div>
           </div>
         </Step>

@@ -93,6 +93,7 @@ describe('GET /board/trips/:id', () => {
     const e = await makeExplorer({
       name: 'Sipho Dlamini', emergency_name: 'Lindiwe', emergency_relation: 'Brother or sister', birthday: '1990-01-01',
       gender: 'Male', height_cm: 182, weight_kg: 74, shoe_size: '9', language: 'de',
+      allergies: 'Penicillin', medication: 'Insulin', blood_type: 'AB+',
     })
     const t = await startTrip(env.DB, e.user.id, {
       ...base, activity: 'mtb', destination_text: 'Constantiaberg mast', return_by: Date.now() + 1000,
@@ -108,6 +109,10 @@ describe('GET /board/trips/:id', () => {
     expect(html).toContain('UK 9')
     expect(html).toContain('(brother or sister)')
     expect(html).toContain('No bike photo')
+    expect(html).toContain('<dt>Blood type</dt><dd>AB+</dd>')
+    expect(html).toContain('<dt>Allergies</dt><dd>Penicillin</dd>')
+    expect(html).toContain('<dt>Medication</dt><dd>Insulin</dd>')
+    expect(html).not.toContain('<dt>Conditions</dt>')
   })
 
   it('404s for a missing trip', async () => {
