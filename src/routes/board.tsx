@@ -3,7 +3,7 @@ import type { AppEnv } from '../env'
 import { getUserById, lastPositionsByTrip, listPositions } from '../lib/db'
 import { requireRole } from '../lib/middleware'
 import { getTrip, listCompanions, listOpenTrips, tripPlace } from '../lib/trips'
-import { Board, STATUSES, TripDetail } from '../views/board'
+import { Board, Brief, STATUSES, TripDetail } from '../views/board'
 import { Layout } from '../views/layout'
 
 export const board = new Hono<AppEnv>()
@@ -43,6 +43,20 @@ board.get('/board/trips/:id', async (c) => {
   return c.html(
     <Layout title="Trip" user={c.var.user} current="board">
       <TripDetail trip={trip} user={user} positions={positions} companions={companions} now={Date.now()} />
+    </Layout>,
+  )
+})
+
+board.get('/board/trips/:id/brief', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id'))
+  if (!trip) return c.text('Not found', 404)
+  const [user, positions, companions] = await Promise.all([
+    getUserById(c.env.DB, trip.user_id), listPositions(c.env.DB, trip.id, 50), listCompanions(c.env.DB, trip.id),
+  ])
+  if (!user) return c.text('Not found', 404)
+  return c.html(
+    <Layout title={`Brief ${user.name}`} user={c.var.user} variant="bare">
+      <Brief trip={trip} user={user} positions={positions} companions={companions} now={Date.now()} />
     </Layout>,
   )
 })
