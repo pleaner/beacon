@@ -17,12 +17,12 @@ const opts = (xs: readonly string[]) => xs.map((x) => ({ value: x, label: x }))
 
 // ---------- welcome ----------
 
-// The front door for anyone without a cookie. Says what Beacon is before it asks for a name.
+// The front door for anyone without a cookie. Says what Guardian is before it asks for a name.
 export const Welcome: FC = () => (
   <main class="signin">
     <img src="/sarza-logo.png" alt="SARZA Search &amp; Rescue" style="width: 132px; height: 132px; align-self: center;" />
     <div class="stack" style="gap: 10px;">
-      <h1 class="display">Beacon</h1>
+      <h1 class="display">Guardian</h1>
       <p class="lead">File a plan before you head out. If you're not back when you expect to be, we'll check in on you. If you don't respond, or call for help, SARZA will help you get home safe.</p>
     </div>
     <a class="btn yellow big" href="/profile">Get started</a>
@@ -96,7 +96,7 @@ export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partia
             <div class="setup" data-standalone>
               <span class="n">1</span>
               <div>
-                <strong>Add Beacon to your home screen</strong>
+                <strong>Add Guardian to your home screen</strong>
                 <p>Tap Share, then "Add to Home Screen". On iPhone, alerts only work this way.</p>
               </div>
             </div>
@@ -128,7 +128,7 @@ export const Home: FC<{ user: User; last: Trip | null; welcome: boolean; notice?
   <main>
     <h1 class="display xl">Hi {user.name.split(' ')[0]}</h1>
     {welcome && (
-      <div class="banner ok" role="status">Profile saved. Two things make the alarm work: add Beacon to your home screen, and allow notifications.</div>
+      <div class="banner ok" role="status">Profile saved. Two things make the alarm work: add Guardian to your home screen, and allow notifications.</div>
     )}
     {notice && <div class="banner ok" role="status">{notice}</div>}
     <div id="alerts-off" class="banner warn" hidden>
@@ -209,7 +209,7 @@ export const NewTripForm: FC<{
           <input type="hidden" name="start_accuracy" />
           <input type="hidden" name="battery" />
 
-          <Step title="How Beacon works" lead="A minute now will increase the odds of us turning a bad day into a great story. Only your return time is needed."
+          <Step title="How Guardian works" lead="A minute now will increase the odds of us turning a bad day into a great story. Only your return time is needed."
             icon={icon} eyebrowLabel={label} next={`Plan my ${noun}`}>
             {errorBanner('intro')}
             <ol class="how">
@@ -408,7 +408,7 @@ export const HelpScreen: FC<{ trip: Trip; emergency: string; error?: string }> =
   <main class="help-screen" style="min-height: 100vh; min-height: 100dvh;">
     <a href="/" class="brand" style="align-self: flex-start;">
       <img src="/sarza-logo.png" alt="SARZA Search &amp; Rescue" />
-      <span><b>Beacon</b></span>
+      <span><b>Guardian</b></span>
     </a>
     {error && <div class="banner error" role="alert">{error}</div>}
     <div class="rings" aria-hidden="true"><div><div></div></div></div>

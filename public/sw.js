@@ -2,7 +2,7 @@ self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()))
 
 self.addEventListener('push', (e) => {
-  let p = { title: 'SARZA Beacon', body: '' }
+  let p = { title: 'Guardian by SARZA', body: '' }
   try { p = e.data.json() } catch {}
   e.waitUntil(
     self.registration.showNotification(p.title, {

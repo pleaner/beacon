@@ -1,4 +1,6 @@
-# SARZA Beacon
+# Guardian by SARZA
+
+Formerly SARZA Beacon. Only the user-facing name changed. The repo, worker names, databases, session cookie and beacon.pleaner.com domain still say beacon.
 
 File a trip plan before you go out. If you're not back by the time you said, the app asks if you're okay. If you don't answer, SARZA operators see it and get pushed. Slide for help at any time.
 
@@ -53,7 +55,7 @@ Not yet run. Needs a physical iPhone and Android device; see the plan, Task 14, 
 
 ## Design refresh (September 2026)
 
-The screens follow the SARZA Beacon canvas: navy, red and yellow from the SARZA badge, Barlow Condensed headings over IBM Plex Sans.
+The screens follow the Guardian by SARZA canvas: navy, red and yellow from the SARZA badge, Barlow Condensed headings over IBM Plex Sans.
 
 - Profile is 4 steps and a new trip is 6 steps. Each flow is still one form and one POST; `public/app.js` shows one step at a time. Without JavaScript every step shows on one page.
 - Trips no longer ask for an area. New trips store `area = 'other'`; the start point is named from GPS after the trip starts (`src/lib/places.ts`, OpenStreetMap Nominatim by default, set `GEOCODE_URL` to change or empty it to turn lookups off).

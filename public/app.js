@@ -29,7 +29,7 @@
 
   async function subscribePush() {
     if (!canPush) {
-      alert('On iPhone: tap Share, then "Add to Home Screen", then open Beacon from your home screen and try again.')
+      alert('On iPhone: tap Share, then "Add to Home Screen", then open Guardian from your home screen and try again.')
       return
     }
     if ((await Notification.requestPermission()) !== 'granted') return

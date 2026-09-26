@@ -14,7 +14,7 @@ export function nominatimLookup(env: Env): PlaceLookup {
     const base = env.GEOCODE_URL
     if (!base) return null
     const url = `${base}?format=jsonv2&zoom=16&addressdetails=1&lat=${lat.toFixed(5)}&lon=${lng.toFixed(5)}`
-    const res = await fetch(url, { headers: { 'user-agent': `SARZA Beacon (${env.APP_URL})`, 'accept-language': 'en' } })
+    const res = await fetch(url, { headers: { 'user-agent': `Guardian by SARZA (${env.APP_URL})`, 'accept-language': 'en' } })
     if (!res.ok) return null
     return placeFromReply((await res.json()) as NominatimReply)
   }

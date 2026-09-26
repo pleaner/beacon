@@ -1,7 +1,7 @@
 import { raw } from 'hono/html'
 import type { FC } from 'hono/jsx'
 
-// Stroke icons drawn for Beacon. They inherit the text colour.
+// Stroke icons drawn for Guardian. They inherit the text colour.
 const PATHS = {
   hike: '<path d="M3 20 L9.5 9 L13 15 L15.5 11 L21 20 Z"/><path d="M8 13.5 L10 12 L11.5 13.5"/>',
   run: '<circle cx="15" cy="4.5" r="1.8"/><path d="M6 21 L9.5 15 L13 17 L14 12 L10 10 L7 12"/><path d="M14 12 L17 14.5 L20 13"/><path d="M9.5 15 L12 11.5"/>',

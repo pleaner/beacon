@@ -32,8 +32,8 @@ export const Layout: FC<Props> = ({ title, user, bodyAttrs = {}, variant, bodyCl
         <meta name="theme-color" content="#212C65" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Beacon" />
-        <title>{title} · SARZA Beacon</title>
+        <meta name="apple-mobile-web-app-title" content="Guardian" />
+        <title>{title} · Guardian by SARZA</title>
         {raw("<script>document.documentElement.classList.add('js')</script>")}
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/icon-192.png" type="image/png" />
@@ -60,7 +60,7 @@ const AppBar: FC<{ user: User | null }> = ({ user }) => (
       <a href="/" class="brand">
         <img src="/sarza-logo.png" alt="SARZA Search &amp; Rescue" />
         <span>
-          <b>Beacon</b>
+          <b>Guardian</b>
           <small>SARZA Search &amp; Rescue</small>
         </span>
       </a>
@@ -149,7 +149,7 @@ const OpsBar: FC<{ user: User; title: string; current?: string; helpCount?: numb
           <div class="head">
             <img src="/sarza-logo.png" alt="" />
             <div class="grow">
-              <strong>Beacon</strong>
+              <strong>Guardian</strong>
               <small>{isAdmin ? 'Admin' : 'Operator'}</small>
             </div>
             <a class="icon-btn" href="#" aria-label="Close menu" data-menu-close>

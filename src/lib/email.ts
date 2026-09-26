@@ -6,7 +6,7 @@ export function lastMagicLinkForTests() {
 
 export async function sendMagicLink(env: Env, to: string, url: string): Promise<void> {
   last = { to, url }
-  const text = `Open this link on your phone to sign in to SARZA Beacon. It works once, for 15 minutes.\n\n${url}\n\nOn iPhone, open Beacon from your home screen and paste this link on the page where you asked for it.\n\nIf you didn't ask for this, ignore it.`
+  const text = `Open this link on your phone to sign in to Guardian by SARZA. It works once, for 15 minutes.\n\n${url}\n\nOn iPhone, open Guardian from your home screen and paste this link on the page where you asked for it.\n\nIf you didn't ask for this, ignore it.`
   if (!env.RESEND_API_KEY) {
     console.log('MAGIC LINK', to, url)
     return
@@ -14,7 +14,7 @@ export async function sendMagicLink(env: Env, to: string, url: string): Promise<
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: env.EMAIL_FROM, to, subject: 'Your SARZA Beacon sign-in link', text }),
+    body: JSON.stringify({ from: env.EMAIL_FROM, to, subject: 'Your Guardian by SARZA sign-in link', text }),
   })
   if (!res.ok) throw new Error(`Resend error ${res.status}: ${await res.text()}`)
 }
