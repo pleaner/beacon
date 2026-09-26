@@ -10,6 +10,13 @@ import { board } from './routes/board'
 import { explorer } from './routes/explorer'
 
 const app = new Hono<AppEnv>()
+// The app was SARZA Beacon at beacon.pleaner.com. Send old links to the new domain.
+// ponytail: static files in public/ are served before the worker, so only app routes redirect.
+app.use(async (c, next) => {
+  const url = new URL(c.req.url)
+  if (url.hostname !== 'beacon.pleaner.com') return next()
+  return c.redirect(c.env.APP_URL + url.pathname + url.search, 301)
+})
 app.use(loadUser)
 
 app.get('/health', (c) => c.text('ok'))
