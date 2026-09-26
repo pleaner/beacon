@@ -159,7 +159,7 @@ export async function addSubscription(db: DB, userId: string, sub: { endpoint: s
   await db
     .prepare(
       `INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, created_at) VALUES (?,?,?,?,?,?)
-       ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`,
+       ON CONFLICT(user_id, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`,
     )
     .bind(crypto.randomUUID(), userId, sub.endpoint, sub.p256dh, sub.auth, Date.now())
     .run()
