@@ -33,15 +33,19 @@
       return
     }
     if ((await Notification.requestPermission()) !== 'granted') return
-    markPushDone()
-    if (!vapid) return // profile not saved yet; the home screen subscribes once it is
+    if (!vapid) return markPushDone() // profile not saved yet; the home screen subscribes once it is
     const reg = await navigator.serviceWorker.ready
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(vapid) })
-    await fetch('/api/push/subscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(sub.toJSON()) })
+    const r = await fetch('/api/push/subscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(sub.toJSON()) })
+    if (!r.ok) throw new Error('subscribe ' + r.status)
+    markPushDone()
     if (off) off.hidden = true
   }
-  $$('[data-enable-push]').forEach((b) => b.addEventListener('click', () => subscribePush().catch(console.error)))
-  if (vapid && granted()) subscribePush().catch(() => {})
+  $$('[data-enable-push]').forEach((b) => b.addEventListener('click', () => subscribePush().catch((e) => {
+    console.error(e)
+    alert("Couldn't turn on alerts. Check your signal and try again.")
+  })))
+  if (vapid && granted()) subscribePush().catch(() => { if (off) off.hidden = false })
 
   // ---------- multi-step forms ----------
   const stepForm = $('[data-steps]')
@@ -164,6 +168,10 @@
       const line = $('#battery-line')
       line.hidden = false
       $('span span', line).textContent = b + '%'
+      const item = $('input[name=checklist][value^="Phone battery"]', form)
+      if (!item) return
+      if (b > 50) { item.checked = true; summary() }
+      else if (b < 50) item.parentElement.classList.add('low')
     })
 
     // back-by
