@@ -70,7 +70,7 @@ describe('settings and checklists', () => {
 })
 
 describe('subscriptions', () => {
-  it('upserts by endpoint, lists by user and role, deletes', async () => {
+  it('upserts by user and endpoint, lists by user and role, deletes', async () => {
     const e = await makeExplorer()
     const o = await makeOperator()
     const a = await makeAdmin()
