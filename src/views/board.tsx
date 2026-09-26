@@ -214,6 +214,7 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
           <div><dt>Started</dt><dd>{fmt(trip.start_at)}{trip.start_lat != null && trip.start_lng != null && <> at <a href={mapsUrl(trip.start_lat, trip.start_lng)}>{place ?? 'start point'}</a></>}</dd></div>
           {trip.destination_text && <div><dt>Headed to</dt><dd>{trip.destination_text}</dd></div>}
           <div><dt>Route</dt><dd>{trip.route_text ?? '-'}</dd></div>
+          {trip.voice_note_key && <div><dt>Voice note</dt><dd><audio controls preload="metadata" src={`/photos/${trip.voice_note_key}`}></audio></dd></div>}
           <div><dt>Back by</dt><dd>{fmt(trip.return_by)}</dd></div>
           {trip.wearing_text && <div><dt>Wearing</dt><dd>{trip.wearing_text}</dd></div>}
           <div><dt>Battery at start</dt><dd>{trip.battery_at_start != null ? `${trip.battery_at_start}%` : 'unknown'}</dd></div>

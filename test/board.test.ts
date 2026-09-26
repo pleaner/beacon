@@ -110,6 +110,29 @@ describe('GET /board/trips/:id', () => {
     expect(html).toContain('No bike photo')
   })
 
+  it('plays the voice note to operators only, with Range for Safari', async () => {
+    const o = await makeOperator()
+    const e = await makeExplorer()
+    const other = await makeExplorer()
+    const key = `users/${e.user.id}/note.mp4`
+    await env.PHOTOS.put(key, new Uint8Array([1, 2, 3, 4]), { httpMetadata: { contentType: 'audio/mp4' } })
+    const t = await startTrip(env.DB, e.user.id, { ...base, voice_note_key: key, return_by: Date.now() + 1000 }, Date.now())
+    const html = await (await exports.default.fetch(`${BASE}/board/trips/${t.id}`, { headers: { cookie: cookieFor(o.token) } })).text()
+    expect(html).toContain(`<audio controls="" preload="metadata" src="/photos/${key}">`)
+    let res = await exports.default.fetch(`${BASE}/photos/${key}`, { headers: { cookie: cookieFor(o.token) } })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('audio/mp4')
+    expect((await res.arrayBuffer()).byteLength).toBe(4)
+    res = await exports.default.fetch(`${BASE}/photos/${key}`, { headers: { cookie: cookieFor(o.token), range: 'bytes=0-1' } })
+    expect(res.status).toBe(206)
+    expect(res.headers.get('content-range')).toBe('bytes 0-1/4')
+    expect((await res.arrayBuffer()).byteLength).toBe(2)
+    res = await exports.default.fetch(`${BASE}/photos/${key}`, { headers: { cookie: cookieFor(other.token) } })
+    expect(res.status).toBe(403)
+    res = await exports.default.fetch(`${BASE}/photos/${key}`, { redirect: 'manual' })
+    expect(res.status).not.toBe(200)
+  })
+
   it('404s for a missing trip', async () => {
     const o = await makeOperator()
     const res = await exports.default.fetch(`${BASE}/board/trips/nope`, { headers: { cookie: cookieFor(o.token) } })
