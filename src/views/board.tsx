@@ -1,6 +1,6 @@
 import type { FC } from 'hono/jsx'
 import { ACTIVITIES, LANGUAGES } from '../lib/constants'
-import type { Position, User } from '../lib/db'
+import { MAX_MESSAGE, type Message, type Position, type User } from '../lib/db'
 import { formatPhone } from '../lib/phone'
 import { tripLine, tripPlace, type Companion, type OpenTripRow, type Trip } from '../lib/trips'
 import { Icon, type IconName } from './icons'
@@ -151,6 +151,25 @@ export const EmergencyCard: FC<{ user: User }> = ({ user }) => (
   </section>
 )
 
+// The trip's thread. public/app.js polls it and sends without a reload; without JS the form posts and comes back.
+export const Chat: FC<{ tripId: string; messages: Message[]; placeholder: string }> = ({ tripId, messages, placeholder }) => (
+  <section class="card chat" data-chat={tripId}>
+    <h2>Messages</h2>
+    <ul class="list" data-msgs>
+      {messages.map((m) => (
+        <li class={`msg ${m.author_role}`}>
+          <div class="who2"><small>{m.author_name} · {clock(m.created_at)}</small><span>{m.body}</span></div>
+        </li>
+      ))}
+    </ul>
+    <form method="post" action={`/api/trips/${tripId}/messages`} class="stack" style="gap: 8px;">
+      <textarea name="body" maxlength={MAX_MESSAGE} required rows={2} aria-label="Message" placeholder={placeholder}></textarea>
+      <button class="btn" type="submit">Send</button>
+    </form>
+  </section>
+)
+const clock = (ms: number) => new Date(ms).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Johannesburg' })
+
 const PositionRow: FC<{ p: Position; now: number }> = ({ p, now }) => (
   <li>
     <div class="who2">
@@ -165,7 +184,7 @@ const PositionRow: FC<{ p: Position; now: number }> = ({ p, now }) => (
   </li>
 )
 
-export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; companions: Companion[]; now: number }> = ({ trip, user, positions, companions, now }) => {
+export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; companions: Companion[]; messages: Message[]; now: number }> = ({ trip, user, positions, companions, messages, now }) => {
   const last = positions[0]
   const checklist = JSON.parse(trip.checklist_json) as string[]
   const first = user.name.split(' ')[0]
@@ -214,6 +233,8 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
           </>
         )}
       </section>
+
+      <Chat tripId={trip.id} messages={messages} placeholder={`Message ${first}`} />
 
       <section class="card">
         <h2>Plan</h2>

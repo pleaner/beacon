@@ -295,6 +295,9 @@ details.more[open] summary { margin-bottom: 10px; }
 .card { background: #fff; border: 1px solid var(--zb); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .card > .card-head { display: flex; justify-content: space-between; align-items: center; }
 .card h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--z9); }
+.chat { color: var(--ink); text-align: left; }
+.chat .msg span { white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat .msg.operator small { color: var(--navy); font-weight: 600; }
 .group-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--zm); text-transform: uppercase; letter-spacing: .06em; }
 .trip-row { display: flex; flex-direction: column; gap: 8px; padding: 14px; background: #fff; border: 1px solid var(--zb); border-radius: 12px; text-decoration: none; color: var(--ink); }
 .trip-row.help { background: var(--red-t); border-color: var(--red); }
