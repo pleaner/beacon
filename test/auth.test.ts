@@ -21,7 +21,7 @@ describe('magic links', () => {
 
   it('round-trips a user id', async () => {
     const token = await signMagicLink(secret, 'user-1', 2000)
-    expect(await verifyMagicLink(secret, token, 1000)).toBe('user-1')
+    expect(await verifyMagicLink(secret, token, 1000)).toEqual({ userId: 'user-1', expiresAt: 2000 })
   })
 
   it('rejects after expiry', async () => {

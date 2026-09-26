@@ -34,15 +34,15 @@ export async function runCron(env: Env, send: PushSender, now: number) {
 
   for (const trip of await findTripsToAlertOperators(db, now, graceMs)) {
     try {
-      if (!(await markOperatorsAlerted(db, trip.id, now))) continue
-      alerted++
       const user = await getUserById(db, trip.user_id)
-      await pushToRoles(db, send, ['operator', 'admin'], {
+      const { sent } = await pushToRoles(db, send, ['operator', 'admin'], {
         title: `Overdue: ${user?.name ?? 'unknown'}`,
         body: `${tripLine(trip)}, due ${formatTime(trip.return_by)}. No answer for ${graceMinutes} min.`,
         url: `/board/trips/${trip.id}`,
         tag: `trip-${trip.id}`,
       })
+      // Mark only after a push lands, so a failed send retries next minute (same as help below).
+      if (sent > 0 && (await markOperatorsAlerted(db, trip.id, now))) alerted++
     } catch (e) {
       console.error('operator alert failed', trip.id, String(e))
     }

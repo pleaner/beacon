@@ -62,6 +62,20 @@ describe('runCron', () => {
     expect(f.sent.filter((s) => s.endpoint === 'https://push.test/o')).toHaveLength(1)
   })
 
+  it('retries the overdue alert until an operator push lands', async () => {
+    const { t } = await setup()
+    const f = fakeSender()
+    await runCron(env, f.send, 10_000)
+    f.statusFor.set('https://push.test/o', 500)
+    let r = await runCron(env, f.send, 10_000 + GRACE)
+    expect(r.alerted).toBe(0)
+    expect((await getTrip(env.DB, t.id))?.operators_alerted_at).toBeNull()
+    f.statusFor.delete('https://push.test/o')
+    r = await runCron(env, f.send, 10_000 + GRACE + 60_000)
+    expect(r.alerted).toBe(1)
+    expect((await getTrip(env.DB, t.id))?.operators_alerted_at).toBe(10_000 + GRACE + 60_000)
+  })
+
   it('respects the grace_minutes setting', async () => {
     await setup()
     await setSetting(env.DB, 'grace_minutes', '5')

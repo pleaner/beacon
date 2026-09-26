@@ -3,11 +3,11 @@ import { Hono } from 'hono'
 import { deleteCookie, setCookie } from 'hono/cookie'
 import type { AppEnv } from '../env'
 import { COOKIE_MAX_AGE, COOKIE_NAME, hashToken, newToken, signMagicLink, verifyMagicLink } from '../lib/auth'
-import { getUserByEmail, getUserById, setUserTokenHash, updateUser } from '../lib/db'
+import { consumeMagicLink, getUserByEmail, getUserById, issueMagicLink, setUserTokenHash, updateUser } from '../lib/db'
 import { sendMagicLink } from '../lib/email'
 import { readBody, str } from '../lib/middleware'
 import { Layout } from '../views/layout'
-import { LinkSent, Login } from '../views/auth'
+import { ConfirmLink, LinkSent, Login } from '../views/auth'
 
 export const MAGIC_LINK_TTL_MS = 15 * 60 * 1000
 const isOps = (role: string) => role === 'operator' || role === 'admin'
@@ -24,8 +24,9 @@ auth.post('/auth/link', async (c) => {
   const email = str(await readBody(c), 'email')?.toLowerCase()
   if (email) {
     const user = await getUserByEmail(c.env.DB, email)
-    if (user && isOps(user.role)) {
-      const token = await signMagicLink(c.env.SESSION_SECRET, user.id, Date.now() + MAGIC_LINK_TTL_MS)
+    const expiresAt = Date.now() + MAGIC_LINK_TTL_MS
+    if (user && isOps(user.role) && (await issueMagicLink(c.env.DB, user.id, expiresAt))) {
+      const token = await signMagicLink(c.env.SESSION_SECRET, user.id, expiresAt)
       const url = `${c.env.APP_URL}/auth/verify?t=${token}`
       c.executionCtx.waitUntil(
         sendMagicLink(c.env, email, url).catch((e) => console.error('magic link email failed', String(e))),
@@ -36,10 +37,10 @@ auth.post('/auth/link', async (c) => {
 })
 
 async function finishVerify(c: Context<AppEnv>, token: string) {
-  const userId = await verifyMagicLink(c.env.SESSION_SECRET, token, Date.now())
-  const user = userId ? await getUserById(c.env.DB, userId) : null
-  if (!user || !isOps(user.role)) {
-    return c.html(<Layout title="Sign in" user={null} variant="bare" bodyClass="navy"><Login error="That link has expired. Ask for a new one." /></Layout>, 400)
+  const link = await verifyMagicLink(c.env.SESSION_SECRET, token, Date.now())
+  const user = link ? await getUserById(c.env.DB, link.userId) : null
+  if (!link || !user || !isOps(user.role) || !(await consumeMagicLink(c.env.DB, user.id, link.expiresAt))) {
+    return c.html(<Layout title="Sign in" user={null} variant="bare" bodyClass="navy"><Login error="That link has expired or was already used. Ask for a new one." /></Layout>, 400)
   }
   const session = newToken()
   await setUserTokenHash(c.env.DB, user.id, await hashToken(session))
@@ -47,7 +48,10 @@ async function finishVerify(c: Context<AppEnv>, token: string) {
   return c.redirect('/board')
 }
 
-auth.get('/auth/verify', async (c) => finishVerify(c, c.req.query('t') ?? ''))
+// A link works once, and email scanners open links to check them. Sign in only on the button press.
+auth.get('/auth/verify', (c) =>
+  c.html(<Layout title="Sign in" user={null} variant="bare" bodyClass="navy"><ConfirmLink token={c.req.query('t') ?? ''} /></Layout>),
+)
 
 auth.post('/auth/verify', async (c) => {
   const link = str(await readBody(c), 'link') ?? ''

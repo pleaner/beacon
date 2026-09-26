@@ -37,7 +37,7 @@ export async function signMagicLink(secret: string, userId: string, expiresAt: n
   return `${payload}.${b64url(new Uint8Array(sig))}`
 }
 
-export async function verifyMagicLink(secret: string, token: string, now: number): Promise<string | null> {
+export async function verifyMagicLink(secret: string, token: string, now: number): Promise<{ userId: string; expiresAt: number } | null> {
   const [payload, sig] = token.split('.')
   if (!payload || !sig) return null
   const sigBytes = fromB64url(sig)
@@ -51,5 +51,5 @@ export async function verifyMagicLink(secret: string, token: string, now: number
   const userId = text.slice(0, idx)
   const expiresAt = Number(text.slice(idx + 1))
   if (!Number.isFinite(expiresAt) || now > expiresAt) return null
-  return userId
+  return { userId, expiresAt }
 }

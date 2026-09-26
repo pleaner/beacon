@@ -100,6 +100,9 @@ api.post('/profile', async (c) => {
   }
 })
 
+const readChecklist = (raw: unknown) =>
+  (Array.isArray(raw) ? raw.map(String) : typeof raw === 'string' && raw ? [raw] : []).slice(0, 50).map((s) => s.slice(0, 200))
+
 // Companions arrive as parallel form fields (companion_name, companion_phone, companion_phone_country)
 // or as a JSON array of { name, phone }.
 function readCompanions(body: Body): Array<{ name: string; phone: string | null }> {
@@ -108,7 +111,7 @@ function readCompanions(body: Body): Array<{ name: string; phone: string | null 
   if (Array.isArray(raw)) {
     return raw
       .filter((x): x is { name: unknown; phone?: unknown } => !!x && typeof x === 'object')
-      .map((x) => ({ name: String(x.name ?? '').trim(), phone: typeof x.phone === 'string' ? normalizePhone(x.phone) : null }))
+      .map((x) => ({ name: String(x.name ?? '').trim().slice(0, 80), phone: typeof x.phone === 'string' ? normalizePhone(x.phone) : null }))
       .filter((x) => x.name)
   }
   const list = (k: string) => {
@@ -139,7 +142,7 @@ api.post('/trips', requireApiRole('explorer', 'operator', 'admin'), async (c) =>
       destination_text: str(body, 'destination_text'),
       route_text: str(body, 'route_text'),
       return_by: str(body, 'return_by'),
-      checklist: Array.isArray(raw) ? raw.map(String) : typeof raw === 'string' ? [raw] : [],
+      checklist: readChecklist(raw),
       companions: readCompanions({ ...body, company: 'group' }),
       alone: str(body, 'company') === 'alone',
     }
@@ -150,7 +153,7 @@ api.post('/trips', requireApiRole('explorer', 'operator', 'admin'), async (c) =>
   if (!return_by) return fail('"Back by" must be a time in the future', 400, 'when')
 
   const raw = body.checklist as unknown
-  const checklist = Array.isArray(raw) ? raw.map(String) : typeof raw === 'string' && raw ? [raw] : []
+  const checklist = readChecklist(raw)
   let photo_key: string | null
   let newShoe: string | null
   let newGear: string | null = null

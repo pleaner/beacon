@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import type { AppEnv } from '../src/env'
-import { done, loadUser, num, readBody, requireApiRole, requireRole, str, type Body } from '../src/lib/middleware'
+import { done, loadUser, MAX_TEXT, num, readBody, requireApiRole, requireRole, str, type Body } from '../src/lib/middleware'
 import { cookieFor, makeExplorer, makeOperator } from './helpers'
 
 function testApp() {
@@ -56,6 +56,12 @@ describe('requireApiRole', () => {
     const o = await makeOperator()
     res = await app.request('/api/e', { headers: { cookie: cookieFor(o.token) } }, env)
     expect(res.status).toBe(403)
+  })
+})
+
+describe('str', () => {
+  it('caps text at MAX_TEXT', () => {
+    expect(str({ t: 'x'.repeat(MAX_TEXT + 500) }, 't')).toHaveLength(MAX_TEXT)
   })
 })
 

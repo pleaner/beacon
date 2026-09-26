@@ -30,6 +30,10 @@ describe('login flow', () => {
     expect(link?.to).toBe('ops@sarza.test')
     expect(link?.url).toContain('/auth/verify?t=')
     res = await exports.default.fetch(link!.url, { redirect: 'manual' })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('set-cookie')).toBeNull()
+    expect(await res.text()).toContain('name="link"')
+    res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: link!.url }))
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toBe('/board')
     const token = (res.headers.get('set-cookie') ?? '').match(/beacon=([^;]+)/)![1]
@@ -69,7 +73,7 @@ describe('login flow', () => {
   })
 
   it('rejects a bad link', async () => {
-    const res = await exports.default.fetch(`${BASE}/auth/verify?t=nope`, { redirect: 'manual' })
+    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: 'nope' }))
     expect(res.status).toBe(400)
     expect(await res.text()).toContain('expired')
   })
@@ -77,7 +81,7 @@ describe('login flow', () => {
   it('rejects a validly signed link for an explorer, and sets no cookie', async () => {
     const e = await makeExplorer()
     const token = await signMagicLink(env.SESSION_SECRET, e.user.id, Date.now() + 60_000)
-    const res = await exports.default.fetch(`${BASE}/auth/verify?t=${token}`, { redirect: 'manual' })
+    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: token }))
     expect(res.status).toBe(400)
     expect(res.headers.get('set-cookie')).toBeNull()
   })
@@ -91,6 +95,25 @@ describe('login flow', () => {
     expect(res.headers.get('location')).toBe('/board')
     const token = (res.headers.get('set-cookie') ?? '').match(/beacon=([^;]+)/)![1]
     expect((await getUserByTokenHash(env.DB, await hashToken(token)))?.id).toBe(o.user.id)
+  })
+
+  it('a link works once', async () => {
+    await makeOperator({ email: 'once@sarza.test' })
+    await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'once@sarza.test' }))
+    const link = lastMagicLinkForTests()!
+    expect((await exports.default.fetch(`${BASE}/auth/verify`, form({ link: link.url }))).status).toBe(302)
+    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: link.url }))
+    expect(res.status).toBe(400)
+    expect(res.headers.get('set-cookie')).toBeNull()
+  })
+
+  it('sends at most one link a minute per operator', async () => {
+    await makeOperator({ email: 'spam@sarza.test' })
+    await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'spam@sarza.test' }))
+    const first = lastMagicLinkForTests()
+    const res = await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'spam@sarza.test' }))
+    expect(await res.text()).toContain('Check your email')
+    expect(lastMagicLinkForTests()).toBe(first)
   })
 
   it('rejects garbage pasted into the link form', async () => {

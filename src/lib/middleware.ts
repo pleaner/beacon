@@ -50,10 +50,13 @@ export function done(c: Context, data: object, redirectTo: string): Response {
   return wantsJson(c) ? c.json(data) : c.redirect(redirectTo, 303)
 }
 
+// Every text field is capped here. The longest real input (route notes, an admin checklist) fits well under it.
+export const MAX_TEXT = 2000
+
 export function str(body: Body, key: string): string | null {
   const v = body[key]
   if (typeof v !== 'string') return null
-  const t = v.trim()
+  const t = v.slice(0, MAX_TEXT).trim()
   return t === '' ? null : t
 }
 

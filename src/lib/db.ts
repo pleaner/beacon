@@ -98,6 +98,20 @@ export async function updateUser(db: DB, id: string, fields: Partial<Omit<User, 
   await db.prepare(`UPDATE users SET ${sets} WHERE id = ?`).bind(...vals, id).run()
 }
 
+// Issue at most one link a minute per user. Returns false while the last one is under a minute old.
+export async function issueMagicLink(db: DB, id: string, expiresAt: number) {
+  // Every link has the same TTL, so "previous link issued over a minute ago" is "previous expiry a minute before this one".
+  const r = await db
+    .prepare('UPDATE users SET magic_link_expires = ? WHERE id = ? AND (magic_link_expires IS NULL OR magic_link_expires <= ?)')
+    .bind(expiresAt, id, expiresAt - 60_000)
+    .run()
+  return r.meta.changes > 0
+}
+export async function consumeMagicLink(db: DB, id: string, expiresAt: number) {
+  const r = await db.prepare('UPDATE users SET magic_link_expires = NULL WHERE id = ? AND magic_link_expires = ?').bind(id, expiresAt).run()
+  return r.meta.changes > 0
+}
+
 export async function setUserTokenHash(db: DB, id: string, hash: string) {
   await db.prepare('UPDATE users SET token_hash = ? WHERE id = ?').bind(hash, id).run()
 }
