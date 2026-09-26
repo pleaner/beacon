@@ -164,6 +164,10 @@
       const line = $('#battery-line')
       line.hidden = false
       $('span span', line).textContent = b + '%'
+      const item = $('input[name=checklist][value^="Phone battery"]', form)
+      if (!item) return
+      if (b > 50) { item.checked = true; summary() }
+      else if (b < 50) item.parentElement.classList.add('low')
     })
 
     // back-by
