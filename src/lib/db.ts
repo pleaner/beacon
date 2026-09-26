@@ -42,8 +42,13 @@ export interface Position {
   lng: number
   accuracy: number | null
   battery: number | null
+  altitude: number | null
+  altitude_accuracy: number | null
   at: number
+  received_at: number | null
 }
+export type NewPosition = Omit<Position, 'id' | 'altitude' | 'altitude_accuracy' | 'received_at'> &
+  Partial<Pick<Position, 'altitude' | 'altitude_accuracy'>>
 
 type DB = D1Database
 
@@ -178,14 +183,21 @@ export async function deleteSubscription(db: DB, endpoint: string) {
 
 // positions
 
-export async function insertPosition(db: DB, p: Omit<Position, 'id'>) {
-  await db.prepare('INSERT INTO positions (trip_id, lat, lng, accuracy, battery, at) VALUES (?,?,?,?,?,?)')
-    .bind(p.trip_id, p.lat, p.lng, p.accuracy, p.battery, p.at).run()
+const INSERT_POSITION =
+  'INSERT OR IGNORE INTO positions (trip_id, lat, lng, accuracy, battery, altitude, altitude_accuracy, at, received_at) VALUES (?,?,?,?,?,?,?,?,?)'
+const bindPosition = (stmt: D1PreparedStatement, p: NewPosition, now: number) =>
+  stmt.bind(p.trip_id, p.lat, p.lng, p.accuracy, p.battery, p.altitude ?? null, p.altitude_accuracy ?? null, p.at, now)
+
+export async function insertPosition(db: DB, p: NewPosition) {
+  await bindPosition(db.prepare(INSERT_POSITION), p, Date.now()).run()
 }
-export async function insertPositions(db: DB, rows: Array<Omit<Position, 'id'>>): Promise<void> {
-  if (rows.length === 0) return
-  const stmt = db.prepare('INSERT INTO positions (trip_id, lat, lng, accuracy, battery, at) VALUES (?,?,?,?,?,?)')
-  await db.batch(rows.map((p) => stmt.bind(p.trip_id, p.lat, p.lng, p.accuracy, p.battery, p.at)))
+// Returns how many rows were new; a fix already stored for that trip and moment is skipped.
+export async function insertPositions(db: DB, rows: NewPosition[]): Promise<number> {
+  if (rows.length === 0) return 0
+  const stmt = db.prepare(INSERT_POSITION)
+  const now = Date.now()
+  const res = await db.batch(rows.map((p) => bindPosition(stmt, p, now)))
+  return res.reduce((n, r) => n + r.meta.changes, 0)
 }
 export async function listPositions(db: DB, tripId: string, limit = 50): Promise<Position[]> {
   return (await db.prepare('SELECT * FROM positions WHERE trip_id = ? ORDER BY at DESC LIMIT ?').bind(tripId, limit).all<Position>()).results

@@ -252,25 +252,29 @@ api.post('/trips/:id/positions', requireApiRole('explorer', 'operator', 'admin')
   if (!trip) return c.json({ error: 'Not found' }, 404)
   if (trip.status === 'closed') return c.json({ error: 'Trip is closed' }, 409)
   const items = (await c.req.json().catch(() => null)) as unknown
-  if (!Array.isArray(items) || items.length === 0 || items.length > 10) return c.json({ error: 'Send an array of 1 to 10 positions' }, 400)
+  if (!Array.isArray(items) || items.length === 0 || items.length > 50) return c.json({ error: 'Send an array of 1 to 50 positions' }, 400)
   const now = Date.now()
-  const oneHourAgo = now - 60 * 60_000
+  // ponytail: 10 minutes of slack for a phone clock that runs behind the server's
+  const since = trip.created_at - 10 * 60_000
+  const opt = (v: unknown) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null)
   const rows = []
   for (const p of items as Array<Record<string, unknown>>) {
     const lat = Number(p.lat)
     const lng = Number(p.lng)
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ error: 'lat and lng must be numbers' }, 400)
-    const at = Math.min(Number.isFinite(Number(p.at)) && p.at != null ? Number(p.at) : now, now)
-    if (at < oneHourAgo) continue
+    const at = Math.min(opt(p.at) ?? now, now)
+    if (at < since) continue
+    const battery = opt(p.battery)
     rows.push({
-      trip_id: trip.id, lat, lng,
-      accuracy: Number.isFinite(Number(p.accuracy)) && p.accuracy != null ? Number(p.accuracy) : null,
-      battery: Number.isFinite(Number(p.battery)) && p.battery != null ? Math.round(Number(p.battery)) : null,
-      at,
+      trip_id: trip.id, lat, lng, at,
+      accuracy: opt(p.accuracy),
+      battery: battery == null ? null : Math.round(battery),
+      altitude: opt(p.altitude),
+      altitude_accuracy: opt(p.altitude_accuracy),
     })
   }
-  await insertPositions(c.env.DB, rows)
-  return c.json({ ok: true, saved: rows.length })
+  const saved = await insertPositions(c.env.DB, rows)
+  return c.json({ ok: true, saved })
 })
 
 api.post('/board/trips/:id/close', requireApiRole('operator', 'admin'), async (c) => {

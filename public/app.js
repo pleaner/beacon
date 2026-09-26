@@ -241,28 +241,52 @@
   const tripId = body.dataset.tripId
   if (tripId) {
     const every = body.dataset.tripStatus === 'help' ? 30000 : 120000
-    const queue = []
-    const status = $('#help-status')
+    // Fixes wait in localStorage until they reach the server, so a stretch without signal
+    // or the app being closed doesn't lose them. Other trips' leftovers are dropped.
+    const key = 'positions:' + tripId
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i)
+        if (k.startsWith('positions:') && k !== key) localStorage.removeItem(k)
+      }
+    } catch {}
+    const load = () => { try { return JSON.parse(localStorage.getItem(key)) || [] } catch { return [] } }
+    const save = (q) => { try { localStorage.setItem(key, JSON.stringify(q)) } catch {} }
+    let sending = false
+    async function flush() {
+      if (sending) return
+      sending = true
+      try {
+        for (let q = load(); q.length; q = load()) {
+          const batch = q.slice(0, 50)
+          const res = await fetch(`/api/trips/${tripId}/positions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(batch) })
+          if (res.status === 409) { localStorage.removeItem(key); clearInterval(intervalId); location.reload(); return }
+          if (!res.ok) return
+          // fixes taken while this batch was in flight were appended after it
+          save(load().slice(batch.length))
+          if (body.dataset.tripStatus === 'help' && status) status.textContent = 'Position sent ' + new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
+        }
+      } catch {} finally { sending = false }
+    }
     function ping() {
       navigator.geolocation?.getCurrentPosition(
         async (p) => {
-          queue.push({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, battery: await battery(), at: Date.now() })
-          while (queue.length > 5) queue.shift()
-          try {
-            const res = await fetch(`/api/trips/${tripId}/positions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(queue) })
-            if (res.ok) {
-              queue.length = 0
-              if (body.dataset.tripStatus === 'help' && status) status.textContent = 'Position sent ' + new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
-            }
-            if (res.status === 409) { clearInterval(intervalId); location.reload() }
-          } catch {}
+          const c = p.coords
+          const fix = { lat: c.latitude, lng: c.longitude, accuracy: c.accuracy, altitude: c.altitude, altitude_accuracy: c.altitudeAccuracy, battery: await battery(), at: p.timestamp || Date.now() }
+          const q = load()
+          q.push(fix)
+          // ponytail: keeps the newest 500 (about 16 h at one fix every 2 min); thin the old ones if trips run longer
+          save(q.slice(-500))
+          flush()
         },
         () => {},
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 },
       )
     }
+    addEventListener('online', flush)
     ping()
     const intervalId = setInterval(ping, every)
+    flush()
 
     const slider = $('[data-help-slider] input')
     if (slider) {

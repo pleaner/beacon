@@ -193,18 +193,37 @@ describe('positions', () => {
     expect(list[0].at).toBeGreaterThan(recent)
   })
 
-  it('clamps a future timestamp to now and drops one over an hour stale', async () => {
+  it('clamps a future timestamp to now and drops fixes from before the trip', async () => {
     const { t, cookie } = await live()
     const now = Date.now()
     const res = await call(`/api/trips/${t.id}/positions`, { cookie, ...json([
       { lat: -34.1, lng: 18.4, at: now + 60_000 },
-      { lat: -34.2, lng: 18.5, at: now - 2 * 60 * 60_000 },
+      { lat: -34.2, lng: 18.5, at: t.created_at - 60 * 60_000 },
     ]) })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true, saved: 1 })
     const list = await listPositions(env.DB, t.id)
     expect(list).toHaveLength(1)
     expect(list[0].at).toBeLessThan(now + 60_000)
+  })
+
+  it('takes a late backlog with altitude, marks when it arrived, and stores a resent batch once', async () => {
+    const { t, cookie } = await live()
+    await env.DB.prepare('UPDATE trips SET created_at = ? WHERE id = ?').bind(Date.now() - 4 * 60 * 60_000, t.id).run()
+    const threeHoursAgo = Date.now() - 3 * 60 * 60_000
+    const backlog = [
+      { lat: -34.1, lng: 18.4, altitude: 1085.4, altitude_accuracy: 12, battery: 55, at: threeHoursAgo },
+      { lat: -34.2, lng: 18.5, altitude: null, at: threeHoursAgo + 120_000 },
+    ]
+    let res = await call(`/api/trips/${t.id}/positions`, { cookie, ...json(backlog) })
+    expect(await res.json()).toEqual({ ok: true, saved: 2 })
+    res = await call(`/api/trips/${t.id}/positions`, { cookie, ...json(backlog) })
+    expect(await res.json()).toEqual({ ok: true, saved: 0 })
+    const list = await listPositions(env.DB, t.id)
+    expect(list).toHaveLength(2)
+    expect(list[1]).toMatchObject({ altitude: 1085.4, altitude_accuracy: 12, battery: 55, at: threeHoursAgo })
+    expect(list[0].altitude).toBeNull()
+    expect(list[1].received_at! - list[1].at).toBeGreaterThan(2 * 60 * 60_000)
   })
 
   it('rejects bad payloads, closed trips, and other users', async () => {

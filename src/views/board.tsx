@@ -152,7 +152,11 @@ const PositionRow: FC<{ p: Position; now: number }> = ({ p, now }) => (
   <li>
     <div class="who2">
       <span class="pos">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</span>
-      <small>{ago(p.at, now)}{p.accuracy != null ? ` · ±${Math.round(p.accuracy)} m` : ''}{p.battery != null ? ` · ${p.battery}%` : ''}</small>
+      <small>
+        {ago(p.at, now)}{p.accuracy != null ? ` · ±${Math.round(p.accuracy)} m` : ''}
+        {p.altitude != null ? ` · ${Math.round(p.altitude)} m up` : ''}{p.battery != null ? ` · ${p.battery}%` : ''}
+        {p.received_at != null && p.received_at - p.at > 5 * 60_000 ? ` · arrived ${ago(p.received_at, now)}` : ''}
+      </small>
     </div>
     <a href={mapsUrl(p.lat, p.lng)} class="row" style="min-height: 44px; font-size: 14px; font-weight: 600; gap: 4px;">Map<Icon name="ext" size={15} /></a>
   </li>
