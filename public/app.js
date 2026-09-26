@@ -241,6 +241,7 @@
   const tripId = body.dataset.tripId
   if (tripId) {
     const every = body.dataset.tripStatus === 'help' ? 30000 : 120000
+    const status = $('#help-status')
     // Fixes wait in localStorage until they reach the server, so a stretch without signal
     // or the app being closed doesn't lose them. Other trips' leftovers are dropped.
     const key = 'positions:' + tripId
@@ -264,9 +265,17 @@
           if (!res.ok) return
           // fixes taken while this batch was in flight were appended after it
           save(load().slice(batch.length))
-          if (body.dataset.tripStatus === 'help' && status) status.textContent = 'Position sent ' + new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
+          lastSent = new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
         }
-      } catch {} finally { sending = false }
+      } catch {} finally { sending = false; show() }
+    }
+    // On the help screen, say whether positions are reaching SARZA or waiting for signal.
+    let lastSent = ''
+    function show() {
+      if (body.dataset.tripStatus !== 'help' || !status) return
+      const n = load().length
+      const sent = lastSent ? 'Position sent ' + lastSent : ''
+      status.textContent = n ? `${n} ${n === 1 ? 'position' : 'positions'} waiting for signal` + (sent ? '. Last ' + sent.toLowerCase() : '') : sent
     }
     function ping() {
       navigator.geolocation?.getCurrentPosition(
