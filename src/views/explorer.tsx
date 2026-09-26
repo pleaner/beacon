@@ -294,7 +294,7 @@ export const NewTripForm: FC<{
                 <span class="hint">{activity === 'paraglide' ? 'Head to toe, in your harness and helmet.' : activity === 'mtb' ? 'Head to toe, in your helmet and kit.' : 'Head to toe, with your pack on.'} It shows us everything you're wearing.</span>
                 <span class="go"><Icon name="camera" size={18} />Take photo</span>
               </span>
-              <input type="file" name="photo" accept="image/*" aria-label="Full-body photo, today" />
+              <input type="file" name="photo" accept="image/*" capture="environment" aria-label="Full-body photo, today" />
             </label>
             {g ? (
               <div class="grid2">
