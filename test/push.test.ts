@@ -34,6 +34,20 @@ describe('pushToUser', () => {
     expect(left).toEqual(['https://push.test/1', 'https://push.test/4'])
   })
 
+  it('delivers to both accounts that share one endpoint, and a dead endpoint drops for both', async () => {
+    const e = await makeExplorer()
+    const o = await makeOperator()
+    await addSubscription(env.DB, e.user.id, sub(1))
+    await addSubscription(env.DB, o.user.id, sub(1))
+    const f = fakeSender()
+    expect(await pushToUser(env.DB, f.send, e.user.id, { title: 'x', body: 'y' })).toEqual({ sent: 1, removed: 0 })
+    expect(await pushToRoles(env.DB, f.send, ['operator'], { title: 'x', body: 'y' })).toEqual({ sent: 1, removed: 0 })
+    expect(f.sent.map((s) => s.endpoint)).toEqual(['https://push.test/1', 'https://push.test/1'])
+    f.statusFor.set('https://push.test/1', 410)
+    await pushToUser(env.DB, f.send, e.user.id, { title: 'x', body: 'y' })
+    expect(await listSubscriptionsForUser(env.DB, o.user.id)).toHaveLength(0)
+  })
+
   it('is a no-op with no subscriptions', async () => {
     const { user } = await makeExplorer()
     const f = fakeSender()

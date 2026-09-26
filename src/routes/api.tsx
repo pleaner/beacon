@@ -3,12 +3,12 @@ import { Hono } from 'hono'
 import { setCookie } from 'hono/cookie'
 import type { AppEnv } from '../env'
 import { COOKIE_MAX_AGE, COOKIE_NAME, hashToken, newToken } from '../lib/auth'
-import { ACTIVITIES, AREAS, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity, type Area } from '../lib/constants'
+import { ACTIVITIES, AREAS, BLOOD_TYPES, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity, type Area } from '../lib/constants'
 import { addMessage, addSubscription, createUser, insertPositions, listMessages, MAX_MESSAGE, updateUser } from '../lib/db'
 import { done, num, readBody, requireApiRole, str, wantsJson, type Body } from '../lib/middleware'
 import { normalizePhone } from '../lib/phone'
 import { getPlaceLookup } from '../lib/places'
-import { savePhoto } from '../lib/photos'
+import { savePhoto, saveVoiceNote } from '../lib/photos'
 import { getSender, helpPayload, pushToRoles, pushToUser } from '../lib/push'
 import { cancelHelp, extendTrip, getTrip, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
 import { newTripPage, profilePage } from './explorer'
@@ -45,6 +45,10 @@ function profileExtras(body: Body) {
     shoe_size: str(body, 'shoe_size')?.slice(0, 8) ?? null,
     language: pick('language', Object.keys(LANGUAGES)),
     emergency_relation: pick('emergency_relation', RELATIONS),
+    allergies: str(body, 'allergies'),
+    conditions: str(body, 'conditions'),
+    medication: str(body, 'medication'),
+    blood_type: pick('blood_type', BLOOD_TYPES),
   }
   // Only touch what the client sent, so an older client never blanks fields it doesn't know about.
   return Object.fromEntries(Object.entries(all).filter(([k]) => k in body)) as Partial<typeof all>
@@ -157,10 +161,12 @@ api.post('/trips', requireApiRole('explorer', 'operator', 'admin'), async (c) =>
   let photo_key: string | null
   let newShoe: string | null
   let newGear: string | null = null
+  let voice_note_key: string | null
   try {
     photo_key = await savePhoto(c.env.PHOTOS, user.id, body.photo)
     newShoe = await savePhoto(c.env.PHOTOS, user.id, body.shoe_photo)
     if (GEAR[activity]) newGear = await savePhoto(c.env.PHOTOS, user.id, body.gear_photo)
+    voice_note_key = await saveVoiceNote(c.env.PHOTOS, user.id, body.voice_note)
   } catch (e) {
     return fail((e as Error).message, 400)
   }
@@ -173,7 +179,7 @@ api.post('/trips', requireApiRole('explorer', 'operator', 'admin'), async (c) =>
     const trip = await startTrip(c.env.DB, user.id, {
       activity, area: area ?? 'other', destination_text: str(body, 'destination_text'),
       route_text: str(body, 'route_text'), companions_text: str(body, 'companions_text'), wearing_text: str(body, 'wearing_text'),
-      photo_key, shoe_photo_key, gear_photo_key, companions: readCompanions(body),
+      photo_key, shoe_photo_key, gear_photo_key, voice_note_key, companions: readCompanions(body),
       start_lat: num(body, 'start_lat'), start_lng: num(body, 'start_lng'), start_accuracy: num(body, 'start_accuracy'),
       return_by, checklist, battery_at_start: num(body, 'battery'),
     }, now)

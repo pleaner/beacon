@@ -78,13 +78,17 @@ explorer.get('/profile', async (c) => {
 explorer.get('/photos/*', requireRole('explorer', 'operator', 'admin'), async (c) => {
   const key = c.req.path.slice('/photos/'.length)
   if (!canSeePhoto(c.var.user!, key)) return c.text('Forbidden', 403)
-  const obj = await c.env.PHOTOS.get(key)
+  const obj = await c.env.PHOTOS.get(key, { range: c.req.raw.headers })
   if (!obj) return c.text('Not found', 404)
-  return new Response(obj.body, {
-    headers: {
-      'content-type': obj.httpMetadata?.contentType ?? 'image/jpeg',
-      'cache-control': 'private, max-age=86400',
-      'x-content-type-options': 'nosniff',
-    },
-  })
+  const headers: Record<string, string> = {
+    'content-type': obj.httpMetadata?.contentType ?? 'image/jpeg',
+    'cache-control': 'private, max-age=86400',
+    'x-content-type-options': 'nosniff',
+    'accept-ranges': 'bytes',
+  }
+  // Safari won't play a voice note from a server that ignores Range.
+  const r = obj.range as { offset: number; length: number } | undefined
+  if (!c.req.header('range') || !r) return new Response(obj.body, { headers })
+  headers['content-range'] = `bytes ${r.offset}-${r.offset + r.length - 1}/${obj.size}`
+  return new Response(obj.body, { status: 206, headers })
 })

@@ -21,8 +21,13 @@ export interface User {
   shoe_size: string | null
   language: string | null
   emergency_relation: string | null
+  allergies: string | null
+  conditions: string | null
+  medication: string | null
+  blood_type: string | null
 }
 type ProfileExtra = 'birthday' | 'gender' | 'height_cm' | 'weight_kg' | 'shoe_size' | 'language' | 'emergency_relation'
+  | 'allergies' | 'conditions' | 'medication' | 'blood_type'
 export type NewUser = Omit<User, 'id' | 'created_at' | 'token_hash' | ProfileExtra> &
   Partial<Pick<User, ProfileExtra>> & { token_hash?: string | null }
 
@@ -61,16 +66,19 @@ export async function createUser(db: DB, u: NewUser): Promise<User> {
     .prepare(
       `INSERT INTO users (id, role, name, phone, email, organisation, emergency_name, emergency_phone,
         description, photo_key, consent_contact, token_hash, created_at,
-        birthday, gender, height_cm, weight_kg, shoe_size, language, emergency_relation)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        birthday, gender, height_cm, weight_kg, shoe_size, language, emergency_relation,
+        allergies, conditions, medication, blood_type)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .bind(id, u.role, u.name, u.phone, u.email, u.organisation, u.emergency_name, u.emergency_phone,
       u.description, u.photo_key, u.consent_contact ? 1 : 0, u.token_hash ?? null, created_at,
       u.birthday ?? null, u.gender ?? null, u.height_cm ?? null, u.weight_kg ?? null, u.shoe_size ?? null,
-      u.language ?? null, u.emergency_relation ?? null)
+      u.language ?? null, u.emergency_relation ?? null,
+      u.allergies ?? null, u.conditions ?? null, u.medication ?? null, u.blood_type ?? null)
     .run()
   return {
     birthday: null, gender: null, height_cm: null, weight_kg: null, shoe_size: null, language: null, emergency_relation: null,
+    allergies: null, conditions: null, medication: null, blood_type: null,
     ...u, id, created_at, token_hash: u.token_hash ?? null,
   }
 }
@@ -93,7 +101,7 @@ export function getUserByEmail(db: DB, email: string) {
 
 const USER_COLS = ['role', 'name', 'phone', 'email', 'organisation', 'emergency_name', 'emergency_phone',
   'description', 'photo_key', 'consent_contact', 'token_hash', 'birthday', 'gender', 'height_cm', 'weight_kg',
-  'shoe_size', 'language', 'emergency_relation'] as const
+  'shoe_size', 'language', 'emergency_relation', 'allergies', 'conditions', 'medication', 'blood_type'] as const
 
 export async function updateUser(db: DB, id: string, fields: Partial<Omit<User, 'id' | 'created_at'>>) {
   const cols = USER_COLS.filter((k) => k in fields)
@@ -159,7 +167,7 @@ export async function addSubscription(db: DB, userId: string, sub: { endpoint: s
   await db
     .prepare(
       `INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, created_at) VALUES (?,?,?,?,?,?)
-       ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`,
+       ON CONFLICT(user_id, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`,
     )
     .bind(crypto.randomUUID(), userId, sub.endpoint, sub.p256dh, sub.auth, Date.now())
     .run()

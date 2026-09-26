@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import { LANGUAGES } from '../lib/constants'
+import { ACTIVITIES, LANGUAGES } from '../lib/constants'
 import { MAX_MESSAGE, type Message, type Position, type User } from '../lib/db'
 import { formatPhone } from '../lib/phone'
 import { tripLine, tripPlace, type Companion, type OpenTripRow, type Trip } from '../lib/trips'
@@ -115,6 +115,8 @@ export const PersonCard: FC<{ user: User; now: number }> = ({ user, now }) => {
   if (user.height_cm) facts.push(['Height', `${user.height_cm} cm`])
   if (user.weight_kg) facts.push(['Weight', `${user.weight_kg} kg`])
   if (user.shoe_size) facts.push(['Shoe', `UK ${user.shoe_size}`])
+  if (user.blood_type) facts.push(['Blood type', user.blood_type])
+  const medical = ([['Allergies', user.allergies], ['Conditions', user.conditions], ['Medication', user.medication]] as const).filter(([, v]) => v)
   return (
     <section class="card">
       <h2>Person</h2>
@@ -125,6 +127,7 @@ export const PersonCard: FC<{ user: User; now: number }> = ({ user, now }) => {
         <div class="who2"><strong>{user.name}</strong><small class="muted">{user.email ?? ''}</small></div>
       </div>
       {facts.length > 0 && <dl class="facts">{facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
+      {medical.length > 0 && <dl class="kv">{medical.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
       {user.description && <p style="margin: 0;">{user.description}</p>}
     </section>
   )
@@ -207,6 +210,10 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
             <Icon name="phone" />Phone {user.emergency_name ?? 'emergency contact'}{user.emergency_relation ? ` (${user.emergency_relation.toLowerCase()})` : ''} {formatPhone(user.emergency_phone)}
           </a>
         )}
+        <div class="row" style="gap: 8px;">
+          <a class="btn small outline" href={`/board/trips/${trip.id}/brief`}>Brief for searchers</a>
+          <a class="btn small outline" href={`/board/trips/${trip.id}/gpx`} download>GPX for CalTopo</a>
+        </div>
       </div>
       <div class="banner warn">
         <span><strong>{last ? `Last position ${ago(last.at, now)}.` : 'No position received.'}</strong> Positions only arrive while their app is open on screen. Silence means the phone is locked, flat, or out of signal.</span>
@@ -235,6 +242,7 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
           <div><dt>Started</dt><dd>{fmt(trip.start_at)}{trip.start_lat != null && trip.start_lng != null && <> at <a href={mapsUrl(trip.start_lat, trip.start_lng)}>{place ?? 'start point'}</a></>}</dd></div>
           {trip.destination_text && <div><dt>Headed to</dt><dd>{trip.destination_text}</dd></div>}
           <div><dt>Route</dt><dd>{trip.route_text ?? '-'}</dd></div>
+          {trip.voice_note_key && <div><dt>Voice note</dt><dd><audio controls preload="metadata" src={`/photos/${trip.voice_note_key}`}></audio></dd></div>}
           <div><dt>Back by</dt><dd>{fmt(trip.return_by)}</dd></div>
           {trip.wearing_text && <div><dt>Wearing</dt><dd>{trip.wearing_text}</dd></div>}
           <div><dt>Battery at start</dt><dd>{trip.battery_at_start != null ? `${trip.battery_at_start}%` : 'unknown'}</dd></div>
@@ -286,3 +294,81 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
   )
 }
 
+
+// Full date, for paper that outlives the week.
+const when = (ms: number) =>
+  new Date(ms).toLocaleString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Johannesburg' })
+
+// One page for the search team. Printed from the browser, so "Save as PDF" is the PDF export.
+export const Brief: FC<{ trip: Trip; user: User; positions: Position[]; companions: Companion[]; now: number }> = ({ trip, user, positions, companions, now }) => {
+  const checklist = JSON.parse(trip.checklist_json) as string[]
+  const place = tripPlace(trip)
+  const start = trip.start_lat != null && trip.start_lng != null ? `${trip.start_lat.toFixed(5)}, ${trip.start_lng.toFixed(5)}` : null
+  const photos = ([[trip.photo_key, 'Full-body photo'], [trip.gear_photo_key, 'Gear photo'], [trip.shoe_photo_key, 'Shoe sole photo']] as const)
+    .filter(([k]) => k)
+  const rows: Array<[string, string | null]> = [
+    ['Status', trip.status],
+    ['Activity', ACTIVITIES[trip.activity] ?? trip.activity],
+    ['Phone', formatPhone(user.phone)],
+    ['Started', when(trip.start_at)],
+    ['Start point', [place, start].filter(Boolean).join(' · ') || null],
+    ['Headed to', trip.destination_text],
+    ['Route', trip.route_text],
+    ['Back by', when(trip.return_by)],
+    ['Wearing', trip.wearing_text],
+    ['With them', companions.length
+      ? companions.map((p) => (p.phone ? `${p.name} ${formatPhone(p.phone)}` : p.name)).join(', ')
+      : trip.companions_text ?? 'Alone'],
+    ['Battery at start', trip.battery_at_start != null ? `${trip.battery_at_start}%` : null],
+    ['Checklist', checklist.length ? checklist.join(', ') : null],
+  ]
+  return (
+    <main class="brief">
+      <div class="row noprint" style="justify-content: space-between;">
+        <a href={`/board/trips/${trip.id}`} class="row" style="height: 44px; font-weight: 600; text-decoration: none; font-size: 14px;"><Icon name="back" size={18} />Trip</a>
+        <button class="btn small" type="button" onclick="window.print()">Print / Save as PDF</button>
+      </div>
+      <div class="stack" style="gap: 4px;">
+        <span class="muted" style="font-size: 13px;">Guardian by SARZA · search brief · printed {when(now)}</span>
+        <h1 class="display">{user.name}</h1>
+        <p style="margin: 0;">{tripLine(trip)} · back by {when(trip.return_by)}</p>
+      </div>
+
+      <section class="card">
+        <h2>Trip</h2>
+        <dl class="kv">{rows.filter(([, v]) => v).map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+      </section>
+
+      <PersonCard user={user} now={now} />
+      <EmergencyCard user={user} />
+
+      {photos.length > 0 && (
+        <section class="card">
+          <h2>Photos</h2>
+          <div class="photos">{photos.map(([k, label]) => <a href={`/photos/${k}`}><img src={`/photos/${k}`} alt={label} /></a>)}</div>
+        </section>
+      )}
+
+      <section class="card">
+        <h2>Last known positions</h2>
+        <p class="muted" style="margin: 0; font-size: 14px;">Newest first. Positions only arrive while their app is open on screen.</p>
+        {positions.length === 0 ? <p class="muted" style="margin: 0;">None received.</p> : (
+          <table class="brief-pos">
+            <thead><tr><th>Time</th><th>Lat, lng</th><th>±</th><th>Alt</th><th>Batt</th></tr></thead>
+            <tbody>
+              {positions.map((p) => (
+                <tr>
+                  <td>{when(p.at)}</td>
+                  <td><a href={mapsUrl(p.lat, p.lng)}>{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</a></td>
+                  <td>{p.accuracy != null ? `${Math.round(p.accuracy)} m` : ''}</td>
+                  <td>{p.altitude != null ? `${Math.round(p.altitude)} m` : ''}</td>
+                  <td>{p.battery != null ? `${p.battery}%` : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </main>
+  )
+}

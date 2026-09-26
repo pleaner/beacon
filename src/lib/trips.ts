@@ -30,6 +30,7 @@ export interface Trip {
   destination_text: string | null
   start_place: string | null
   gear_photo_key: string | null
+  voice_note_key: string | null
 }
 
 export interface Companion {
@@ -45,6 +46,7 @@ export interface NewTrip {
   area?: Area
   destination_text?: string | null
   gear_photo_key?: string | null
+  voice_note_key?: string | null
   companions?: Array<{ name: string; phone: string | null }>
   route_text: string | null
   companions_text: string | null
@@ -75,12 +77,12 @@ export async function startTrip(db: DB, userId: string, t: NewTrip, now: number)
     .prepare(
       `INSERT INTO trips (id, user_id, activity, area, route_text, companions_text, wearing_text, photo_key,
         shoe_photo_key, start_lat, start_lng, start_accuracy, start_at, return_by, checklist_json,
-        battery_at_start, status, created_at, destination_text, gear_photo_key)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?)`,
+        battery_at_start, status, created_at, destination_text, gear_photo_key, voice_note_key)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?)`,
     )
     .bind(id, userId, t.activity, t.area ?? 'other', t.route_text, t.companions_text, t.wearing_text, t.photo_key,
       t.shoe_photo_key, t.start_lat, t.start_lng, t.start_accuracy, now, t.return_by,
-      JSON.stringify(t.checklist), t.battery_at_start, now, t.destination_text ?? null, t.gear_photo_key ?? null)
+      JSON.stringify(t.checklist), t.battery_at_start, now, t.destination_text ?? null, t.gear_photo_key ?? null, t.voice_note_key ?? null)
   const addCompanion = db.prepare('INSERT INTO companions (trip_id, name, phone, sort) VALUES (?,?,?,?)')
   const companions = (t.companions ?? []).slice(0, 30).map((c, i) => addCompanion.bind(id, c.name, c.phone, i))
   try {

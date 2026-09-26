@@ -19,6 +19,8 @@ describe('GET /profile', () => {
     const html = await res.text()
     expect(html).toContain('name="name"')
     expect(html).toContain('name="consent_contact"')
+    expect(html).toContain('name="allergies"')
+    expect(html).toContain('name="blood_type"')
   })
 
   it('renders a filled form for an explorer, and for an operator too', async () => {
@@ -81,6 +83,7 @@ describe('POST /api/profile', () => {
         name: 'Thandi Mokoena', phone: '082 555 0147', phone_country: '27', email: 'Thandi@Example.com',
         birthday: '1992-03-12', gender: 'Female', language: 'de', height_cm: '168', weight_kg: '61', shoe_size: '6.5',
         emergency_name: 'Lindiwe', emergency_relation: 'Brother or sister', emergency_phone: '7700 900123', emergency_phone_country: '44',
+        allergies: 'Bee stings', conditions: 'Asthma', medication: 'Ventolin, carries an EpiPen', blood_type: 'O-',
       }),
       redirect: 'manual',
     })
@@ -91,17 +94,18 @@ describe('POST /api/profile', () => {
     expect(u.email).toBe('thandi@example.com')
     expect(u.emergency_phone).toBe('+447700900123')
     expect(u).toMatchObject({ birthday: '1992-03-12', gender: 'Female', language: 'de', height_cm: 168, weight_kg: 61, shoe_size: '6.5', emergency_relation: 'Brother or sister' })
+    expect(u).toMatchObject({ allergies: 'Bee stings', conditions: 'Asthma', medication: 'Ventolin, carries an EpiPen', blood_type: 'O-' })
   })
 
   it('drops out-of-range or unknown profile details instead of failing', async () => {
     const res = await exports.default.fetch(`${BASE}/api/profile`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'Q', phone: '+27820000001', email: 'q@example.com', height_cm: 900, gender: 'robot', birthday: '2999-01-01', language: 'xx' }),
+      body: JSON.stringify({ name: 'Q', phone: '+27820000001', email: 'q@example.com', height_cm: 900, gender: 'robot', birthday: '2999-01-01', language: 'xx', blood_type: 'Z+' }),
     })
     expect(res.status).toBe(200)
     const { id } = await res.json<{ id: string }>()
-    const u = await env.DB.prepare('SELECT height_cm, gender, birthday, language FROM users WHERE id = ?').bind(id).first()
-    expect(u).toEqual({ height_cm: null, gender: null, birthday: null, language: null })
+    const u = await env.DB.prepare('SELECT height_cm, gender, birthday, language, blood_type FROM users WHERE id = ?').bind(id).first()
+    expect(u).toEqual({ height_cm: null, gender: null, birthday: null, language: null, blood_type: null })
   })
 
   it('keeps what was typed when a save fails', async () => {
