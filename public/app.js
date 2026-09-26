@@ -236,6 +236,45 @@
       const ini = e.target.value.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('')
       if (ini) av.textContent = ini
     })
+
+    // Voice note: record, stop, then play back or record again. The recording rides in a
+    // hidden file input so it posts with the form. Safari gives audio/mp4, Chrome audio/webm.
+    const voice = $('[data-voice]', form)
+    if (voice && window.MediaRecorder && navigator.mediaDevices) {
+      voice.hidden = false
+      const rec = $('[data-voice-rec]', voice)
+      const play = $('audio', voice)
+      const input = $('input[type=file]', voice)
+      let recorder = null
+      rec.addEventListener('click', async () => {
+        if (recorder) { recorder.stop(); return }
+        let stream
+        try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) } catch { rec.textContent = 'Allow the microphone to record'; return }
+        const chunks = []
+        const r = recorder = new MediaRecorder(stream, { audioBitsPerSecond: 64000 })
+        r.ondataavailable = (e) => chunks.push(e.data)
+        r.onstop = () => {
+          stream.getTracks().forEach((t) => t.stop())
+          recorder = null
+          const type = (r.mimeType || chunks[0]?.type || 'audio/webm').split(';')[0]
+          const file = new File(chunks, 'voice-note.' + type.split('/')[1], { type })
+          // Too big would fail the whole trip on the server, so drop it here.
+          if (file.size > 2 * 1024 * 1024) { input.value = ''; rec.textContent = 'Too long. Record a shorter note'; return }
+          const dt = new DataTransfer()
+          dt.items.add(file)
+          input.files = dt.files
+          play.src = URL.createObjectURL(file)
+          play.hidden = false
+          rec.textContent = 'Record again'
+        }
+        r.start()
+        play.hidden = true
+        rec.textContent = 'Stop'
+        // ponytail: two minutes at 64 kbit/s stays under the server's 2 MB cap
+        setTimeout(() => r.state === 'recording' && r.stop(), 120000)
+      })
+      form.addEventListener('step', () => recorder?.stop())
+    }
   }
 
   // Flags follow the chosen country code (only South Africa has one drawn).

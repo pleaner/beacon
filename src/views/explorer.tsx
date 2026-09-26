@@ -253,6 +253,12 @@ export const NewTripForm: FC<{
               <IconInput id="t-dest" name="destination_text" label="Headed to" icon="flag" hideLabel placeholder="Summit, peak or turnaround point" value={draft?.destination_text} />
               <IconTextarea id="t-route" name="route_text" label="Route" icon="route" hideLabel placeholder="Way up, way down, where you'll stop" value={draft?.route_text} />
             </div>
+            <div class="stack js-only" style="gap: 8px;" data-voice hidden>
+              <span style="font-weight: 600;">Or say it in a voice note (optional)</span>
+              <button class="btn outline" type="button" data-voice-rec>Record</button>
+              <audio controls hidden></audio>
+              <input type="file" name="voice_note" accept="audio/*" hidden />
+            </div>
           </Step>
 
           <Step title="Who's with you?" icon="users" eyebrowLabel={label}>
