@@ -1,6 +1,6 @@
 # Guardian by SARZA
 
-Formerly SARZA Beacon. Only the user-facing name changed. The repo, worker names, databases, session cookie and beacon.pleaner.com domain still say beacon.
+Formerly SARZA Beacon. Only the user-facing name changed. The repo, worker names, databases and session cookie still say beacon.
 
 File a trip plan before you go out. If you're not back by the time you said, the app asks if you're okay. If you don't answer, SARZA operators see it and get pushed. Slide for help at any time.
 
@@ -27,7 +27,7 @@ Magic links print in the dev console when RESEND_API_KEY is unset.
     npm run migrate:staging && npm run deploy:staging
     npm run migrate:prod && npm run deploy
 
-Secrets per environment, set with `wrangler secret put NAME [--env staging]`: `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `RESEND_API_KEY`. Production serves https://beacon.pleaner.com.
+Secrets per environment, set with `wrangler secret put NAME [--env staging]`: `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `RESEND_API_KEY`. Production serves https://guardian.pleaner.com.
 
 ## First admin
 
