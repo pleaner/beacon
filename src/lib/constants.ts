@@ -28,6 +28,8 @@ export const GEAR: Partial<Record<Activity, { label: string; hint: string }>> = 
 
 export const GENDERS = ['Female', 'Male', 'Non-binary', 'Prefer to self-describe', 'Prefer not to say'] as const
 
+export const BLOOD_TYPES = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'] as const
+
 export const RELATIONS = ['Partner or spouse', 'Parent', 'Child', 'Brother or sister', 'Other family', 'Friend', 'Colleague', 'Other'] as const
 
 // South Africa's official languages, by their own names. The UI is English-only for now;

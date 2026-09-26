@@ -54,7 +54,7 @@ Not yet run. Needs a physical iPhone and Android device; see the plan, Task 14, 
 
 The screens follow the Guardian by SARZA canvas: navy, red and yellow from the SARZA badge, Barlow Condensed headings over IBM Plex Sans.
 
-- Profile is 4 steps and a new trip is 6 steps. Each flow is still one form and one POST; `public/app.js` shows one step at a time. Without JavaScript every step shows on one page.
+- Profile is 5 steps and a new trip is 6 steps. Each flow is still one form and one POST; `public/app.js` shows one step at a time. Without JavaScript every step shows on one page.
 - Trips no longer ask for an area. New trips store `area = 'other'`; the start point is named from GPS after the trip starts (`src/lib/places.ts`, OpenStreetMap Nominatim by default, set `GEOCODE_URL` to change or empty it to turn lookups off).
 - Companions are their own table, one row per person with an optional phone.
 - Phones are stored as E.164 (`+27821234567`). Forms send a country code and a national number.

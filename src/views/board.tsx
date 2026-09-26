@@ -115,6 +115,8 @@ export const PersonCard: FC<{ user: User; now: number }> = ({ user, now }) => {
   if (user.height_cm) facts.push(['Height', `${user.height_cm} cm`])
   if (user.weight_kg) facts.push(['Weight', `${user.weight_kg} kg`])
   if (user.shoe_size) facts.push(['Shoe', `UK ${user.shoe_size}`])
+  if (user.blood_type) facts.push(['Blood type', user.blood_type])
+  const medical = ([['Allergies', user.allergies], ['Conditions', user.conditions], ['Medication', user.medication]] as const).filter(([, v]) => v)
   return (
     <section class="card">
       <h2>Person</h2>
@@ -125,6 +127,7 @@ export const PersonCard: FC<{ user: User; now: number }> = ({ user, now }) => {
         <div class="who2"><strong>{user.name}</strong><small class="muted">{user.email ?? ''}</small></div>
       </div>
       {facts.length > 0 && <dl class="facts">{facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
+      {medical.length > 0 && <dl class="kv">{medical.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
       {user.description && <p style="margin: 0;">{user.description}</p>}
     </section>
   )
