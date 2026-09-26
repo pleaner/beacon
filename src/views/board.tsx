@@ -190,6 +190,7 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
         )}
         <div class="row" style="gap: 8px;">
           <a class="btn small outline" href={`/board/trips/${trip.id}/brief`}>Brief for searchers</a>
+          <a class="btn small outline" href={`/board/trips/${trip.id}/gpx`} download>GPX for CalTopo</a>
         </div>
       </div>
       <div class="banner warn">
