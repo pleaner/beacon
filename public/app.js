@@ -315,6 +315,48 @@
     }
   }
 
+  // ---------- chat ----------
+  const chat = $('[data-chat]')
+  if (chat) {
+    const url = `/api/trips/${chat.dataset.chat}/messages`
+    const list = $('[data-msgs]', chat)
+    const chatForm = $('form', chat)
+    const text = $('textarea', chatForm)
+    const time = (ms) => new Date(ms).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', hour12: false })
+    // Names and bodies are user input: textContent only.
+    function render(msgs) {
+      list.replaceChildren(...msgs.map((m) => {
+        const li = document.createElement('li')
+        li.className = 'msg ' + m.author_role
+        const who = document.createElement('div')
+        who.className = 'who2'
+        const small = document.createElement('small')
+        small.textContent = `${m.author_name} · ${time(m.created_at)}`
+        const span = document.createElement('span')
+        span.textContent = m.body
+        who.append(small, span)
+        li.append(who)
+        return li
+      }))
+    }
+    async function poll() {
+      if (document.hidden) return
+      try { const r = await fetch(url, { headers: { accept: 'application/json' } }); if (r.ok) render((await r.json()).messages) } catch {}
+    }
+    setInterval(poll, 15000)
+    document.addEventListener('visibilitychange', poll)
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const btn = $('button', chatForm)
+      btn.disabled = true
+      try {
+        const r = await fetch(url, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ body: text.value }) })
+        const j = await r.json().catch(() => ({}))
+        if (r.ok) { render(j.messages); text.value = '' } else alert(j.error || 'Not sent. Try again.')
+      } catch { alert('Not sent. Check your signal and try again.') } finally { btn.disabled = false }
+    })
+  }
+
   // ---------- operator menu ----------
   const menu = $('[data-menu]')
   if (menu) {

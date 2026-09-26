@@ -1,8 +1,9 @@
 import type { FC } from 'hono/jsx'
 import { ACTIVITIES, COUNTRY_CODES, EXTEND_OPTIONS_MINUTES, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity } from '../lib/constants'
-import type { User } from '../lib/db'
+import type { Message, User } from '../lib/db'
 import { formatPhone, splitPhone } from '../lib/phone'
 import { toLocalInput, tripLine, type Trip } from '../lib/trips'
+import { Chat } from './board'
 import { FlowHead, IconInput, IconTextarea, PhoneField, PhoneInputs, SelectField, Step } from './forms'
 import { Icon, type IconName } from './icons'
 
@@ -350,7 +351,7 @@ export function leftText(returnBy: number, now: number) {
   return mins >= 0 ? `${fmt(mins)} left` : `Overdue by ${fmt(-mins)}`
 }
 
-export const ActiveTrip: FC<{ trip: Trip; error?: string; now?: number }> = ({ trip, error, now = Date.now() }) => {
+export const ActiveTrip: FC<{ trip: Trip; messages: Message[]; error?: string; now?: number }> = ({ trip, messages, error, now = Date.now() }) => {
   const overdue = trip.status === 'overdue'
   return (
     <main class={overdue ? 'overdue' : undefined}>
@@ -400,11 +401,12 @@ export const ActiveTrip: FC<{ trip: Trip; error?: string; now?: number }> = ({ t
       </div>
       <p id="help-status" class="lead" role="status"></p>
       <p class="note"><Icon name="pin" size={18} /><span>While this screen is open we send your position every two minutes. Lock your phone and it stops.</span></p>
+      <Chat tripId={trip.id} messages={messages} placeholder="Message SARZA" />
     </main>
   )
 }
 
-export const HelpScreen: FC<{ trip: Trip; emergency: string; error?: string }> = ({ trip, emergency, error }) => (
+export const HelpScreen: FC<{ trip: Trip; messages: Message[]; emergency: string; error?: string }> = ({ trip, messages, emergency, error }) => (
   <main class="help-screen" style="min-height: 100vh; min-height: 100dvh;">
     <a href="/" class="brand" style="align-self: flex-start;">
       <img src="/sarza-logo.png" alt="SARZA Search &amp; Rescue" />
@@ -417,6 +419,7 @@ export const HelpScreen: FC<{ trip: Trip; emergency: string; error?: string }> =
     <p style="margin: 0; font-size: 17px;">Keep your phone on and this screen open if you can. We send your position every 30 seconds while it's open.</p>
     <a class="btn white big" href={`tel:${emergency}`}><Icon name="phone" size={24} />Phone SARZA {formatPhone(emergency)}</a>
     <p id="help-status" role="status" style="margin: 0; font-size: 14px;"></p>
+    <Chat tripId={trip.id} messages={messages} placeholder="Message SARZA" />
     <div class="grow"></div>
     <p style="margin: 0; font-size: 14px;">Trip: {tripLine(trip)}</p>
     <form method="post" action={`/api/trips/${trip.id}/cancel`}>

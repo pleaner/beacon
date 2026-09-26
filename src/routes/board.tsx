@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { AppEnv } from '../env'
-import { getUserById, lastPositionsByTrip, listPositions } from '../lib/db'
+import { getUserById, lastPositionsByTrip, listMessages, listPositions } from '../lib/db'
 import { requireRole } from '../lib/middleware'
 import { getTrip, listCompanions, listOpenTrips, tripPlace } from '../lib/trips'
 import { Board, STATUSES, TripDetail } from '../views/board'
@@ -36,13 +36,13 @@ board.get('/board', async (c) => {
 board.get('/board/trips/:id', async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id'))
   if (!trip) return c.text('Not found', 404)
-  const [user, positions, companions] = await Promise.all([
-    getUserById(c.env.DB, trip.user_id), listPositions(c.env.DB, trip.id, 50), listCompanions(c.env.DB, trip.id),
+  const [user, positions, companions, messages] = await Promise.all([
+    getUserById(c.env.DB, trip.user_id), listPositions(c.env.DB, trip.id, 50), listCompanions(c.env.DB, trip.id), listMessages(c.env.DB, trip.id),
   ])
   if (!user) return c.text('Not found', 404)
   return c.html(
     <Layout title="Trip" user={c.var.user} current="board">
-      <TripDetail trip={trip} user={user} positions={positions} companions={companions} now={Date.now()} />
+      <TripDetail trip={trip} user={user} positions={positions} companions={companions} messages={messages} now={Date.now()} />
     </Layout>,
   )
 })

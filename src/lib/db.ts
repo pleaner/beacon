@@ -223,3 +223,29 @@ export async function prunePositions(db: DB, before: number): Promise<number> {
   const res = await db.prepare('DELETE FROM positions WHERE at < ?').bind(before).run()
   return res.meta.changes
 }
+
+// messages
+
+export interface Message {
+  id: number
+  author_role: 'explorer' | 'operator'
+  author_name: string
+  body: string
+  created_at: number
+}
+export const MAX_MESSAGE = 1000
+
+export async function addMessage(db: DB, tripId: string, author: Pick<User, 'id' | 'role'>, body: string) {
+  await db
+    .prepare('INSERT INTO messages (trip_id, author_id, author_role, body, created_at) VALUES (?,?,?,?,?)')
+    .bind(tripId, author.id, author.role === 'explorer' ? 'explorer' : 'operator', body, Date.now())
+    .run()
+}
+// ponytail: every poll sends the newest 200 in full; send only newer ids if threads get long
+export async function listMessages(db: DB, tripId: string): Promise<Message[]> {
+  const sql = `SELECT * FROM (
+    SELECT m.id, m.author_role, COALESCE(u.name, 'SARZA') AS author_name, m.body, m.created_at
+    FROM messages m LEFT JOIN users u ON u.id = m.author_id WHERE m.trip_id = ? ORDER BY m.id DESC LIMIT 200
+  ) ORDER BY id`
+  return (await db.prepare(sql).bind(tripId).all<Message>()).results
+}

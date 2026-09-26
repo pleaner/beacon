@@ -4,12 +4,12 @@ import { setCookie } from 'hono/cookie'
 import type { AppEnv } from '../env'
 import { COOKIE_MAX_AGE, COOKIE_NAME, hashToken, newToken } from '../lib/auth'
 import { ACTIVITIES, AREAS, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity, type Area } from '../lib/constants'
-import { addSubscription, createUser, insertPositions, updateUser } from '../lib/db'
+import { addMessage, addSubscription, createUser, insertPositions, listMessages, MAX_MESSAGE, updateUser } from '../lib/db'
 import { done, num, readBody, requireApiRole, str, wantsJson, type Body } from '../lib/middleware'
 import { normalizePhone } from '../lib/phone'
 import { getPlaceLookup } from '../lib/places'
 import { savePhoto } from '../lib/photos'
-import { getSender, helpPayload, pushToRoles } from '../lib/push'
+import { getSender, helpPayload, pushToRoles, pushToUser } from '../lib/push'
 import { cancelHelp, extendTrip, getTrip, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
 import { newTripPage, profilePage } from './explorer'
 
@@ -275,6 +275,38 @@ api.post('/trips/:id/positions', requireApiRole('explorer', 'operator', 'admin')
   }
   const saved = await insertPositions(c.env.DB, rows)
   return c.json({ ok: true, saved })
+})
+
+// Chat: an explorer sees only their own trip's thread, operators and admins any trip's.
+async function chatTrip(c: Context<AppEnv>): Promise<Trip | null> {
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  return trip && (c.var.user!.role !== 'explorer' || trip.user_id === c.var.user!.id) ? trip : null
+}
+
+api.get('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
+  const trip = await chatTrip(c)
+  if (!trip) return c.json({ error: 'Not found' }, 404)
+  return c.json({ messages: await listMessages(c.env.DB, trip.id) })
+})
+
+api.post('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
+  const user = c.var.user!
+  const trip = await chatTrip(c)
+  if (!trip) return c.json({ error: 'Not found' }, 404)
+  if (trip.status === 'closed') return c.json({ error: 'Trip is closed' }, 409)
+  const raw = (await readBody(c)).body
+  const text = typeof raw === 'string' ? raw.trim() : ''
+  if (!text || text.length > MAX_MESSAGE) return c.json({ error: `Write 1 to ${MAX_MESSAGE} characters` }, 400)
+  await addMessage(c.env.DB, trip.id, user, text)
+  const short = text.length > 120 ? text.slice(0, 119) + '…' : text
+  const tag = `chat-${trip.id}`
+  const send = getSender(c.env)
+  c.executionCtx.waitUntil(
+    user.role === 'explorer'
+      ? pushToRoles(c.env.DB, send, ['operator', 'admin'], { title: `Message from ${user.name}`, body: short, url: `/board/trips/${trip.id}`, tag })
+      : pushToUser(c.env.DB, send, trip.user_id, { title: `SARZA: ${user.name}`, body: short, url: '/trip', tag }),
+  )
+  return done(c, { messages: await listMessages(c.env.DB, trip.id) }, user.role === 'explorer' ? '/trip' : `/board/trips/${trip.id}`)
 })
 
 api.post('/board/trips/:id/close', requireApiRole('operator', 'admin'), async (c) => {

@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { AppEnv } from '../env'
 import type { User } from '../lib/db'
 import { ACTIVITIES, type Activity } from '../lib/constants'
-import { getChecklist, getSetting } from '../lib/db'
+import { getChecklist, getSetting, listMessages } from '../lib/db'
 import { requireRole } from '../lib/middleware'
 import { canSeePhoto } from '../lib/photos'
 import { getOpenTrip, lastTripForUser, previousGearPhotos, previousShoePhotos } from '../lib/trips'
@@ -29,15 +29,16 @@ explorer.get('/trip', requireRole('explorer', 'operator', 'admin'), async (c) =>
   const trip = await getOpenTrip(c.env.DB, user.id)
   if (!trip) return c.redirect('/')
   const error = c.req.query('error')
+  const messages = await listMessages(c.env.DB, trip.id)
   const attrs = { 'data-trip-id': trip.id, 'data-trip-status': trip.status, 'data-vapid': c.env.VAPID_PUBLIC_KEY, 'data-emergency': c.env.EMERGENCY_PHONE }
   if (trip.status === 'help') {
     return c.html(
       <Layout title="Help is coming" user={user} bodyAttrs={attrs} variant="bare" bodyClass="red">
-        <HelpScreen trip={trip} emergency={c.env.EMERGENCY_PHONE} error={error} />
+        <HelpScreen trip={trip} messages={messages} emergency={c.env.EMERGENCY_PHONE} error={error} />
       </Layout>,
     )
   }
-  return c.html(<Layout title="Your trip" user={user} variant="app" bodyAttrs={attrs}><ActiveTrip trip={trip} error={error} /></Layout>)
+  return c.html(<Layout title="Your trip" user={user} variant="app" bodyAttrs={attrs}><ActiveTrip trip={trip} messages={messages} error={error} /></Layout>)
 })
 
 explorer.get('/trip/new', requireRole('explorer', 'operator', 'admin'), async (c) => {
