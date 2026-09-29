@@ -27,6 +27,7 @@ const PATHS = {
   userCircle: '<circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="10" r="3"/><path d="M6.5 18.5 C7.8 16.3 9.7 15 12 15 C14.3 15 16.2 16.3 17.5 18.5"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20 C2.5 16.5 5.5 14 9 14 C12.5 14 15.5 16.5 15.5 20"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14 C19.5 14 21.5 16 21.5 19"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6 L12 13 L20.5 6"/>',
+  share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8 L15.8 6.2"/><path d="M8.2 13.2 L15.8 17.8"/>',
   ext: '<path d="M14 4 H20 V10"/><path d="M20 4 L11 13"/><path d="M18 14 V19 C18 19.6 17.6 20 17 20 H5 C4.4 20 4 19.6 4 19 V7 C4 6.4 4.4 6 5 6 H10"/>',
   shoe: '<path d="M3 16 V9 L8 8 C9 10 11 11 13 11 L19 12.5 C20.2 12.8 21 13.8 21 15 V16 Z"/><path d="M3 19 H21"/>',
   body: '<circle cx="12" cy="4.5" r="2.2"/><path d="M8.5 9 C8.5 8 10 7.5 12 7.5 C14 7.5 15.5 8 15.5 9 V14 H14 L13.5 21"/><path d="M8.5 9 V14 H10 L10.5 21"/>',

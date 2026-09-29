@@ -222,35 +222,6 @@ describe('POST /api/trips', () => {
     expect(res.status).toBe(401)
   })
 
-  it('stores a voice note in R2 and keeps its key on the trip', async () => {
-    const e = await makeExplorer()
-    const fd = new FormData()
-    fd.append('activity', 'hike')
-    fd.append('return_by', '2099-01-01T10:00')
-    fd.append('voice_note', new File([new Uint8Array([1, 2, 3])], 'voice-note.webm', { type: 'audio/webm;codecs=opus' }))
-    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: fd, redirect: 'manual' })
-    expect(res.status).toBe(303)
-    const key = (await getOpenTrip(env.DB, e.user.id))!.voice_note_key!
-    expect(key).toMatch(new RegExp(`^users/${e.user.id}/.+\\.webm$`))
-    expect((await env.PHOTOS.get(key))?.httpMetadata?.contentType).toBe('audio/webm')
-  })
-
-  it('rejects a voice note that is not audio or is too big', async () => {
-    const e = await makeExplorer()
-    for (const file of [
-      new File([new Uint8Array([1])], 'note.txt', { type: 'text/plain' }),
-      new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'note.mp4', { type: 'audio/mp4' }),
-    ]) {
-      const fd = new FormData()
-      fd.append('activity', 'hike')
-      fd.append('return_by', '2099-01-01T10:00')
-      fd.append('voice_note', file)
-      const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: fd })
-      expect(res.status).toBe(400)
-    }
-    expect(await getOpenTrip(env.DB, e.user.id)).toBeNull()
-  })
-
   it('rejects an unsupported shoe photo type before starting a trip', async () => {
     const e = await makeExplorer()
     const fd = new FormData()

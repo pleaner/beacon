@@ -2,12 +2,13 @@ import { Hono } from 'hono'
 import type { AppEnv } from '../env'
 import type { User } from '../lib/db'
 import { ACTIVITIES, type Activity } from '../lib/constants'
-import { getChecklist, getSetting, listMessages } from '../lib/db'
+import { getChecklist, getSetting, listMessages, listPositions } from '../lib/db'
 import { requireRole } from '../lib/middleware'
 import { canSeePhoto } from '../lib/photos'
-import { getOpenTrip, lastTripForUser, previousGearPhotos, previousShoePhotos } from '../lib/trips'
+import { getOpenTrip, getTrip, lastTripForUser, previousGearPhotos, previousShoePhotos, routeSummary } from '../lib/trips'
 import { Layout } from '../views/layout'
-import { ActiveTrip, Home, HelpScreen, NewTripForm, ProfileForm, Welcome, type TripDraft } from '../views/explorer'
+import { assetImage, fitMap, tileImages } from '../lib/map'
+import { ActiveTrip, Home, HelpScreen, MAP_BOX, NewTripForm, ProfileForm, TripDone, Welcome, type CardMap, type TripDraft } from '../views/explorer'
 
 export const explorer = new Hono<AppEnv>()
 
@@ -16,7 +17,7 @@ explorer.get('/', async (c) => {
   if (!user) return c.html(<Layout title="Welcome" user={null} variant="bare" bodyClass="navy"><Welcome /></Layout>)
   if (await getOpenTrip(c.env.DB, user.id)) return c.redirect('/trip')
   const last = await lastTripForUser(c.env.DB, user.id)
-  const notice = c.req.query('back') === '1' ? "Welcome back. We've closed your trip." : c.req.query('saved') === '1' ? 'Profile saved.' : undefined
+  const notice = c.req.query('saved') === '1' ? 'Profile saved.' : undefined
   return c.html(
     <Layout title="Home" user={user} variant="app" bodyAttrs={{ 'data-vapid': c.env.VAPID_PUBLIC_KEY }}>
       <Home user={user} last={last} welcome={c.req.query('welcome') === '1'} notice={notice} />
@@ -39,6 +40,27 @@ explorer.get('/trip', requireRole('explorer', 'operator', 'admin'), async (c) =>
     )
   }
   return c.html(<Layout title="Your trip" user={user} variant="app" bodyAttrs={attrs}><ActiveTrip trip={trip} messages={messages} error={error} /></Layout>)
+})
+
+// After "I'm back": the route as a card the explorer can share, and a nudge to share the app.
+explorer.get('/trips/:id/done', requireRole('explorer', 'operator', 'admin'), async (c) => {
+  const user = c.var.user!
+  const trip = await getTrip(c.env.DB, c.req.param('id'))
+  if (!trip || trip.user_id !== user.id || trip.status !== 'closed') return c.redirect('/')
+  const positions = (await listPositions(c.env.DB, trip.id, 5000)).reverse()
+  const start = trip.start_lat != null && trip.start_lng != null ? [{ lat: trip.start_lat, lng: trip.start_lng, altitude: null }] : []
+  const summary = routeSummary([...start, ...positions])
+  const logo = await assetImage(c.env, '/sarza-logo.png')
+  let map: CardMap | null = null
+  if (summary.route.length >= 2 && summary.distance > 20) {
+    const fit = fitMap(summary.route, 0, MAP_BOX.y, 1080, MAP_BOX.h)
+    map = { pts: summary.route.map(fit.project), tiles: await tileImages(c.env, fit) }
+  }
+  return c.html(
+    <Layout title="Trip complete" user={user} variant="bare" bodyClass="navy">
+      <TripDone trip={trip} summary={summary} map={map} logo={logo} host={new URL(c.env.APP_URL).host} appUrl={c.env.APP_URL} />
+    </Layout>,
+  )
 })
 
 explorer.get('/trip/new', requireRole('explorer', 'operator', 'admin'), async (c) => {
@@ -78,17 +100,13 @@ explorer.get('/profile', async (c) => {
 explorer.get('/photos/*', requireRole('explorer', 'operator', 'admin'), async (c) => {
   const key = c.req.path.slice('/photos/'.length)
   if (!canSeePhoto(c.var.user!, key)) return c.text('Forbidden', 403)
-  const obj = await c.env.PHOTOS.get(key, { range: c.req.raw.headers })
+  const obj = await c.env.PHOTOS.get(key)
   if (!obj) return c.text('Not found', 404)
-  const headers: Record<string, string> = {
-    'content-type': obj.httpMetadata?.contentType ?? 'image/jpeg',
-    'cache-control': 'private, max-age=86400',
-    'x-content-type-options': 'nosniff',
-    'accept-ranges': 'bytes',
-  }
-  // Safari won't play a voice note from a server that ignores Range.
-  const r = obj.range as { offset: number; length: number } | undefined
-  if (!c.req.header('range') || !r) return new Response(obj.body, { headers })
-  headers['content-range'] = `bytes ${r.offset}-${r.offset + r.length - 1}/${obj.size}`
-  return new Response(obj.body, { status: 206, headers })
+  return new Response(obj.body, {
+    headers: {
+      'content-type': obj.httpMetadata?.contentType ?? 'image/jpeg',
+      'cache-control': 'private, max-age=86400',
+      'x-content-type-options': 'nosniff',
+    },
+  })
 })

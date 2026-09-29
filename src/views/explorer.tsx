@@ -2,7 +2,7 @@ import type { FC } from 'hono/jsx'
 import { ACTIVITIES, BLOOD_TYPES, COUNTRY_CODES, EXTEND_OPTIONS_MINUTES, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity } from '../lib/constants'
 import type { Message, User } from '../lib/db'
 import { formatPhone, splitPhone } from '../lib/phone'
-import { toLocalInput, tripLine, type Trip } from '../lib/trips'
+import { toLocalInput, tripLine, tripPlace, type RoutePoint, type Trip } from '../lib/trips'
 import { Chat } from './board'
 import { FlowHead, IconInput, IconTextarea, PhoneField, PhoneInputs, SelectField, Step } from './forms'
 import { Icon, type IconName } from './icons'
@@ -254,12 +254,6 @@ export const NewTripForm: FC<{
               <IconInput id="t-dest" name="destination_text" label="Headed to" icon="flag" hideLabel placeholder="Summit, peak or turnaround point" value={draft?.destination_text} />
               <IconTextarea id="t-route" name="route_text" label="Route" icon="route" hideLabel placeholder="Way up, way down, where you'll stop" value={draft?.route_text} />
             </div>
-            <div class="stack js-only" style="gap: 8px;" data-voice hidden>
-              <span style="font-weight: 600;">Or say it in a voice note (optional)</span>
-              <button class="btn outline" type="button" data-voice-rec>Record</button>
-              <audio controls hidden></audio>
-              <input type="file" name="voice_note" accept="audio/*" hidden />
-            </div>
           </Step>
 
           <Step title="Who's with you?" icon="users" eyebrowLabel={label}>
@@ -449,5 +443,119 @@ export const HelpScreen: FC<{ trip: Trip; messages: Message[]; emergency: string
     <form method="post" action={`/api/trips/${trip.id}/cancel`}>
       <button class="btn ghost" type="submit">Cancel, I'm fine</button>
     </form>
+  </main>
+)
+
+// ---------- end of trip ----------
+
+type Summary = { route: RoutePoint[]; distance: number; climb: number }
+// The track already projected onto the card, and the map tiles behind it (none when tiles are off or failed).
+export type CardMap = { pts: Array<readonly [number, number]>; tiles: Array<{ href: string; left: number; top: number }> }
+
+const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s)
+const km = (m: number) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`)
+function span(ms: number) {
+  const min = Math.max(1, Math.round(ms / 60_000))
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`
+}
+
+function elevationPath(route: RoutePoint[], x: number, y: number, w: number, h: number) {
+  const pts = route.filter((p) => p.alt != null)
+  const total = route[route.length - 1]!.dist || 1
+  const alts = pts.map((p) => p.alt!)
+  let [lo, hi] = [Math.min(...alts), Math.max(...alts)]
+  if (hi - lo < 20) { const mid = (hi + lo) / 2; lo = mid - 10; hi = mid + 10 }
+  const xy = pts.map((p) => [x + (p.dist / total) * w, y + h - ((p.alt! - lo) / (hi - lo)) * h] as const)
+  const line = xy.map(([a, b], i) => `${i ? 'L' : 'M'}${a.toFixed(1)} ${b.toFixed(1)}`).join(' ')
+  return { line, area: `${line} L${xy[xy.length - 1]![0].toFixed(1)} ${y + h} L${xy[0]![0].toFixed(1)} ${y + h} Z`, lo, hi }
+}
+
+// Where the map sits on the card; the route page fits the track into this box.
+export const MAP_BOX = { y: 420, h: 960 }
+// "HIKE · LION'S HEAD" from what the explorer typed in "Headed to"; without it, "HIKE COMPLETE".
+function cardTitle(trip: Trip) {
+  const activity = trip.activity === 'other' ? 'Trip' : ACTIVITIES[trip.activity]
+  const dest = trip.destination_text?.trim()
+  const short = dest && dest.length > 40 ? dest.slice(0, 40).replace(/\s+\S*$/, '') + '…' : dest
+  return (short ? `${activity} · ${short}` : `${activity} complete`).toUpperCase()
+}
+const CARD_DISPLAY = "'Barlow Condensed', 'Arial Narrow', sans-serif"
+const CARD_BODY = "'IBM Plex Sans', Helvetica, Arial, sans-serif"
+
+// The share card, 1080 x 1920: the 9:16 of phone stories and status updates, so it fills the screen uncropped.
+export const TripCard: FC<{ trip: Trip; summary: Summary; map: CardMap | null; logo: string | null; host: string }> = ({ trip, summary, map, logo, host }) => {
+  const { route } = summary
+  const pts = map?.pts ?? []
+  const elev = map && route.filter((p) => p.alt != null).length >= 2 ? elevationPath(route, 110, 1440, 860, 190) : null
+  const line = pts.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join(' ')
+  const title = cardTitle(trip)
+  // Barlow Condensed caps run about 0.4 em a letter; shrink long names to fit, and squeeze any that still won't.
+  const size = Math.max(60, Math.min(104, Math.floor(860 / (0.4 * title.length))))
+  const squeeze = title.length * 0.4 * size > 860
+  const place = tripPlace(trip)
+  const when = new Date(trip.start_at).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric', timeZone: TZ })
+  return (
+    <svg id="trip-card" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920" role="img"
+      aria-label={`${tripLine(trip)}: ${km(summary.distance)}, ${span((trip.closed_at ?? Date.now()) - trip.start_at)}, ${summary.climb} m climbed`}
+      style="width: 100%; height: auto; display: block;">
+      <rect width="1080" height="1920" fill="#212c65" />
+      <rect y="0" width="1080" height="14" fill="#fadf06" />
+      {logo && <image href={logo} x="110" y="50" width="120" height="120" />}
+      <text x={logo ? 254 : 110} y="118" fill="#fff" font-size="64" font-weight="800" font-family={CARD_DISPLAY}>GUARDIAN</text>
+      <text x={logo ? 256 : 112} y="158" fill="#fadf06" font-size="30" font-weight="700" letter-spacing="6" font-family={CARD_DISPLAY}>BY SARZA</text>
+      <text x="110" y="238" fill="#fadf06" font-size="30" font-weight="700" letter-spacing="6" font-family={CARD_DISPLAY}>MISSION COMPLETE</text>
+      <text x="110" y="335" fill="#fff" font-size={size} font-weight="800" font-family={CARD_DISPLAY}
+        {...(squeeze ? { textLength: 860, lengthAdjust: 'spacingAndGlyphs' } : {})}>{title}</text>
+      <text x="970" y="118" text-anchor="end" fill="#c9cde0" font-size="28" font-family={CARD_BODY}>{when}</text>
+      {place && <text x="110" y="385" fill="#c9cde0" font-size="34" font-family={CARD_BODY}>{clip(`From ${place}`, 44)}</text>}
+      {map ? (
+        <g>
+          <defs><clipPath id="map-box"><rect x="0" y={MAP_BOX.y} width="1080" height={MAP_BOX.h} /></clipPath></defs>
+          <g clip-path="url(#map-box)">
+            <rect x="0" y={MAP_BOX.y} width="1080" height={MAP_BOX.h} fill="#2c3775" />
+            {map.tiles.map((t) => <image href={t.href} x={t.left.toFixed(1)} y={t.top.toFixed(1)} width="512" height="512" />)}
+            <polyline points={line} fill="none" stroke="#212c65" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
+            <polyline points={line} fill="none" stroke="#fadf06" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
+            <circle cx={pts[0]![0]} cy={pts[0]![1]} r="16" fill="#fff" stroke="#212c65" stroke-width="6" />
+            <circle cx={pts[pts.length - 1]![0]} cy={pts[pts.length - 1]![1]} r="16" fill="#d2202f" stroke="#fff" stroke-width="6" />
+            {map.tiles.length > 0 && (
+              <g>
+                <rect x="620" y={MAP_BOX.y + MAP_BOX.h - 34} width="460" height="34" fill="#fff" fill-opacity="0.8" />
+                <text x="1068" y={MAP_BOX.y + MAP_BOX.h - 11} text-anchor="end" fill="#141a3a" font-size="17" font-family={CARD_BODY}>© OpenStreetMap contributors, SRTM · OpenTopoMap</text>
+              </g>
+            )}
+          </g>
+        </g>
+      ) : (
+        <text x="540" y="900" text-anchor="middle" fill="#c9cde0" font-size="34" font-family={CARD_BODY}>Not enough positions to draw the route</text>
+      )}
+      {elev && (
+        <g>
+          <path d={elev.area} fill="#3b4786" />
+          <path d={elev.line} fill="none" stroke="#fadf06" stroke-width="5" stroke-linejoin="round" />
+          <text x="110" y="1425" fill="#c9cde0" font-size="26" font-family={CARD_BODY}>{Math.round(elev.hi)} m</text>
+          <text x="110" y="1668" fill="#c9cde0" font-size="26" font-family={CARD_BODY}>{Math.round(elev.lo)} m</text>
+        </g>
+      )}
+      <line x1="110" y1="1705" x2="970" y2="1705" stroke="#fff" stroke-opacity="0.2" stroke-width="2" />
+      {([['DISTANCE', km(summary.distance)], ['TIME', span((trip.closed_at ?? Date.now()) - trip.start_at)], ['CLIMB', `${summary.climb} m`]] as const).map(([label, value], i) => (
+        <g>
+          <text x={110 + i * 300} y="1755" fill="#c9cde0" font-size="24" font-weight="700" letter-spacing="3" font-family={CARD_DISPLAY}>{label}</text>
+          <text x={110 + i * 300} y="1815" fill="#fff" font-size="56" font-weight="800" font-family={CARD_DISPLAY}>{value}</text>
+        </g>
+      ))}
+      <text x="110" y="1878" fill="#fadf06" font-size="28" font-weight="600" font-family={CARD_BODY}>Guardian by SARZA · Plan your trip on {host}</text>
+    </svg>
+  )
+}
+
+export const TripDone: FC<{ trip: Trip; summary: Summary; map: CardMap | null; logo: string | null; host: string; appUrl: string }> = ({ trip, summary, map, logo, host, appUrl }) => (
+  <main class="done" data-share-url={appUrl} data-share-name={`guardian-${trip.id.slice(0, 8)}.png`}
+    data-share-text={`Back safe from my ${ACTIVITIES[trip.activity].toLowerCase()}: ${km(summary.distance)}, ${summary.climb} m up. I file a trip plan with Guardian by SARZA, so search and rescue knows where I went.`}>
+    <TripCard trip={trip} summary={summary} map={map} logo={logo} host={host} />
+    <div class="stack actions" style="gap: 12px;">
+      <button class="btn yellow big js-only" type="button" data-share-card><Icon name="share" size={24} />Share your trip</button>
+      <a class="btn ghost" href="/">Done</a>
+    </div>
   </main>
 )
