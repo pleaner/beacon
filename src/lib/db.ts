@@ -49,11 +49,19 @@ export interface Position {
   battery: number | null
   altitude: number | null
   altitude_accuracy: number | null
+  signal: string | null
   at: number
   received_at: number | null
 }
-export type NewPosition = Omit<Position, 'id' | 'altitude' | 'altitude_accuracy' | 'received_at'> &
-  Partial<Pick<Position, 'altitude' | 'altitude_accuracy'>>
+export type NewPosition = Omit<Position, 'id' | 'altitude' | 'altitude_accuracy' | 'signal' | 'received_at'> &
+  Partial<Pick<Position, 'altitude' | 'altitude_accuracy' | 'signal'>>
+
+export const SIGNALS = ['none', 'slow-2g', '2g', '3g', '4g', 'online'] as const
+// For operators: "No signal", "4G", "Weak", or "Signal" when the phone didn't say which kind.
+export function signalLabel(s: string | null): string | null {
+  if (!s) return null
+  return s === 'none' ? 'No signal' : s === 'online' ? 'Signal' : s === 'slow-2g' ? 'Weak' : s.toUpperCase()
+}
 
 type DB = D1Database
 
@@ -192,9 +200,9 @@ export async function deleteSubscription(db: DB, endpoint: string) {
 // positions
 
 const INSERT_POSITION =
-  'INSERT OR IGNORE INTO positions (trip_id, lat, lng, accuracy, battery, altitude, altitude_accuracy, at, received_at) VALUES (?,?,?,?,?,?,?,?,?)'
+  'INSERT OR IGNORE INTO positions (trip_id, lat, lng, accuracy, battery, altitude, altitude_accuracy, signal, at, received_at) VALUES (?,?,?,?,?,?,?,?,?,?)'
 const bindPosition = (stmt: D1PreparedStatement, p: NewPosition, now: number) =>
-  stmt.bind(p.trip_id, p.lat, p.lng, p.accuracy, p.battery, p.altitude ?? null, p.altitude_accuracy ?? null, p.at, now)
+  stmt.bind(p.trip_id, p.lat, p.lng, p.accuracy, p.battery, p.altitude ?? null, p.altitude_accuracy ?? null, p.signal ?? null, p.at, now)
 
 export async function insertPosition(db: DB, p: NewPosition) {
   await bindPosition(db.prepare(INSERT_POSITION), p, Date.now()).run()
@@ -239,20 +247,25 @@ export interface Message {
   author_role: 'explorer' | 'operator'
   author_name: string
   body: string
+  // 'image/…' or 'audio/…' when the message carries a photo or voice note
+  media_type: string | null
   created_at: number
 }
 export const MAX_MESSAGE = 1000
 
-export async function addMessage(db: DB, tripId: string, author: Pick<User, 'id' | 'role'>, body: string) {
+export async function addMessage(db: DB, tripId: string, author: Pick<User, 'id' | 'role'>, body: string, media?: { key: string; type: string }) {
   await db
-    .prepare('INSERT INTO messages (trip_id, author_id, author_role, body, created_at) VALUES (?,?,?,?,?)')
-    .bind(tripId, author.id, author.role === 'explorer' ? 'explorer' : 'operator', body, Date.now())
+    .prepare('INSERT INTO messages (trip_id, author_id, author_role, body, media_key, media_type, created_at) VALUES (?,?,?,?,?,?,?)')
+    .bind(tripId, author.id, author.role === 'explorer' ? 'explorer' : 'operator', body, media?.key ?? null, media?.type ?? null, Date.now())
     .run()
+}
+export function getMessageMedia(db: DB, tripId: string, id: number) {
+  return db.prepare('SELECT media_key, media_type FROM messages WHERE trip_id = ? AND id = ? AND media_key IS NOT NULL').bind(tripId, id).first<{ media_key: string; media_type: string }>()
 }
 // ponytail: every poll sends the newest 200 in full; send only newer ids if threads get long
 export async function listMessages(db: DB, tripId: string): Promise<Message[]> {
   const sql = `SELECT * FROM (
-    SELECT m.id, m.author_role, COALESCE(u.name, 'SARZA') AS author_name, m.body, m.created_at
+    SELECT m.id, m.author_role, COALESCE(u.name, 'SARZA') AS author_name, m.body, m.media_type, m.created_at
     FROM messages m LEFT JOIN users u ON u.id = m.author_id WHERE m.trip_id = ? ORDER BY m.id DESC LIMIT 200
   ) ORDER BY id`
   return (await db.prepare(sql).bind(tripId).all<Message>()).results

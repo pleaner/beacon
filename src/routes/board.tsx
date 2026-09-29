@@ -42,7 +42,8 @@ board.get('/board/trips/:id', async (c) => {
   if (!user) return c.text('Not found', 404)
   return c.html(
     <Layout title="Trip" user={c.var.user} current="board">
-      <TripDetail trip={trip} user={user} positions={positions} companions={companions} messages={messages} now={Date.now()} />
+      <TripDetail trip={trip} user={user} positions={positions} companions={companions} messages={messages} now={Date.now()}
+        admin={c.var.user?.role === 'admin'} saved={c.req.query('saved') === '1'} error={c.req.query('error')} />
     </Layout>,
   )
 })

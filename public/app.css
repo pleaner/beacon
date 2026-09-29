@@ -1,6 +1,6 @@
 /* Guardian by SARZA. Brand: navy, red, yellow from the SARZA badge. */
 :root {
-  --navy: #212c65; --red: #d2202f; --red-ink: #a3131f; --yellow: #fadf06; --yellow-line: #e9cb00;
+  --navy: #212c65; --red: #d2202f; --red-ink: #a3131f; --yellow: #fadf06; --green: #1e8a4c; --yellow-line: #e9cb00;
   --ink: #141a3a; --muted: #565d78; --line: #dadde6; --ground: #f3f4f7; --surface: #fff;
   --navy-t: #e6e8f1; --red-t: #fbe6e8; --yellow-t: #fef7c2;
   /* operator chrome (shadcn-style neutrals) */
@@ -31,7 +31,6 @@ main { max-width: 560px; margin: 0 auto; padding: 24px 20px 32px; display: flex;
 .display.xl { font-size: 44px; }
 .lead { margin: 0; color: var(--muted); font-size: 16px; }
 h2.label { margin: 0; font-family: var(--display); font-size: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--navy); }
-.eyebrow { width: 40px; height: 40px; border-radius: 12px; background: var(--navy); color: var(--yellow); display: flex; align-items: center; justify-content: center; }
 
 /* explorer app bar */
 .appbar { background: var(--navy); color: #fff; }
@@ -107,6 +106,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--n
 .seg label:has(input:focus-visible) { outline: 3px solid var(--yellow); }
 .chip { height: 48px; border-radius: 12px; border: 1.5px solid var(--line); background: #fff; color: var(--navy); font: 700 15px var(--body); cursor: pointer; }
 .chip[aria-pressed=true], .chip.on { border-color: var(--navy); background: var(--navy-t); }
+.pet-picks { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px; border-radius: 14px; background: var(--ground); }
+.pet-picks[hidden], .add-person[hidden] { display: none; }
+.pet-picks .group-title { width: 100%; }
+.pet-picks .chip { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px; }
+.pet-picks .chip[hidden] { display: none; }
 
 /* activity tiles (home) */
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -129,6 +133,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--n
 .step { display: flex; flex-direction: column; gap: 24px; flex-grow: 1; }
 .js .step:not(.current) { display: none; }
 .step .spacer { flex-grow: 1; }
+.step > .pin-bottom { margin-top: auto; }
+.step:has(> .pin-bottom) > .spacer { display: none; }
 .step .actions { display: flex; flex-direction: column; gap: 4px; }
 .js .step .actions { position: sticky; bottom: 0; z-index: 4;
   margin: 0 -20px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); }
@@ -152,12 +158,14 @@ html:not(.js) .slide-cancel input { display: none; }
 .how { display: flex; flex-direction: column; gap: 24px; }
 .how li { display: flex; gap: 16px; align-items: flex-start; }
 .how .n { width: 44px; height: 44px; flex-shrink: 0; border-radius: 22px; background: var(--navy); color: var(--yellow); font: 800 24px var(--display); display: flex; align-items: center; justify-content: center; }
-.how strong { display: block; font-size: 18px; margin-bottom: 4px; }
+.how div > strong { display: block; font-size: 18px; margin-bottom: 4px; }
 .how p { margin: 0; font-size: 15px; color: var(--muted); }
 ol.how { list-style: none; margin: 0; padding: 0; }
 
 /* start point card */
 .startpoint { display: flex; align-items: center; gap: 14px; padding: 12px; background: var(--ground); border-radius: 16px; }
+.startpoint.need small { color: var(--red-ink); }
+.startpoint.need { background: var(--red-t); color: var(--red-ink); font-weight: 600; }
 .startpoint .map { width: 64px; height: 64px; flex-shrink: 0; border-radius: 12px; background: var(--navy-t); display: flex; align-items: center; justify-content: center; color: var(--red); }
 .startpoint strong { display: flex; align-items: center; gap: 6px; font-size: 16px; }
 .startpoint small { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
@@ -177,6 +185,7 @@ ol.how { list-style: none; margin: 0; padding: 0; }
 .backby label { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--yellow); }
 .backby .big { font: 800 84px/.95 var(--display); }
 .backby .row, .trip-when .row { flex-wrap: wrap; row-gap: 0; }
+.backby .in { font: 700 18px var(--display); color: var(--red); }
 .backby .day { font: 700 26px var(--display); text-transform: uppercase; color: #c9cee4; }
 .backby input { margin-top: 10px; min-height: 44px; background: rgba(255,255,255,.12) !important; color: #fff; border: 0 !important; font-weight: 600; color-scheme: dark; }
 .note { margin: 0; display: flex; gap: 10px; font-size: 14px; color: var(--muted); }
@@ -222,7 +231,7 @@ details.more summary { list-style: none; min-height: 48px; display: flex; align-
 details.more summary::-webkit-details-marker { display: none; }
 details.more[open] summary { margin-bottom: 10px; }
 .help-slider { position: relative; height: 72px; border: 2px solid var(--red); border-radius: 36px; background: var(--red-t); overflow: hidden; }
-.help-slider input { -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; z-index: 2; cursor: grab; }
+.help-slider input { -webkit-appearance: none; appearance: none; position: absolute; inset: 0 6px; width: calc(100% - 12px); height: 100%; margin: 0; background: transparent; z-index: 2; cursor: grab; }
 .help-slider input::-webkit-slider-thumb { -webkit-appearance: none; width: 62px; height: 62px; border-radius: 31px; background: var(--red); border: 0;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12H19'/%3E%3Cpath d='M13 6L19 12L13 18'/%3E%3C/svg%3E");
   background-size: 26px; background-position: center; background-repeat: no-repeat; }
@@ -232,14 +241,49 @@ details.more[open] summary { margin-bottom: 10px; }
 .divider { height: 1px; background: var(--line); }
 
 /* help screen */
-.help-screen { color: #fff; text-align: center; }
-.help-screen .rings { align-self: center; width: 150px; height: 150px; border-radius: 75px; border: 3px solid rgba(255,255,255,.28); display: flex; align-items: center; justify-content: center; }
-.help-screen .rings > div { width: 104px; height: 104px; border-radius: 52px; border: 3px solid rgba(255,255,255,.55); display: flex; align-items: center; justify-content: center; }
-.help-screen .rings > div > div { width: 58px; height: 58px; border-radius: 29px; background: #fff; }
-.help-screen .alerted { align-self: center; background: var(--yellow); color: var(--ink); border-radius: 999px; padding: 8px 18px; font-weight: 700; }
-.help-screen .display { color: #fff; font-size: 52px; }
-.help-screen .btn.white { font-size: 18px; }
-.help-screen .btn.ghost { border: 2px solid rgba(255,255,255,.7); color: #fff; }
+.help-screen .facts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.help-screen .facts li { display: flex; gap: 14px; align-items: flex-start; padding: 16px; border-radius: 14px; background: #fff; border: 1px solid var(--line); color: var(--navy); }
+.help-screen .facts b { display: block; font-size: 18px; }
+.help-screen .facts span { display: block; margin-top: 2px; color: var(--muted); font-size: 15px; }
+.help-screen .facts span:empty { display: none; }
+.help-screen .facts .fix { margin-top: 6px; white-space: pre-line; font: 500 14px var(--mono); color: var(--navy); }
+main.help-screen { padding-top: calc(24px + env(safe-area-inset-top)); }
+/* A call for help that hasn't reached us yet takes over the trip screen. */
+#help-pending:not([hidden]) { display: flex; flex-direction: column; gap: 12px; }
+body.help-pending .appbar, body.help-pending main > :not(#help-pending) { display: none; }
+body.help-pending main { padding-top: calc(24px + env(safe-area-inset-top)); }
+/* Messages on the alert screen: a WhatsApp-style thread in our colours filling the rest of the screen, theirs on the left,
+   yours on the right, with the composer pinned to the bottom. */
+/* The screen is one phone-height: the thread scrolls inside its own box, so nothing slides under the composer. */
+main.help-screen { height: 100vh; height: 100dvh; padding-bottom: 0; }
+.help-screen .chat { flex: 1; min-height: 260px; margin: 0 -20px; padding: 14px 12px 0; gap: 10px; border: 0; border-radius: 16px 16px 0 0; background: var(--navy-t); }
+.help-screen .chat h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-align: center; }
+.help-screen .chat .list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; display: flex; flex-direction: column; gap: 6px; padding-bottom: 4px; }
+/* Few messages sit at the bottom, by the composer, and new ones push the rest up. */
+.help-screen .chat .list > li:first-child { margin-top: auto; }
+.help-screen .chat .list > li { max-width: 82%; padding: 6px 10px 5px; border: 0; border-radius: 10px; background: #fff; box-shadow: 0 1px 1px rgba(20,26,58,.08); }
+.help-screen .chat .list > li:last-child { border-bottom: 0; }
+.help-screen .chat .msg.explorer { align-self: flex-end; background: var(--navy); color: #fff; }
+.help-screen .chat .msg.explorer .who2 small { color: rgba(255,255,255,.7); }
+.help-screen .chat .msg .who2 { flex-direction: column-reverse; }
+.help-screen .chat .msg .who2 small { align-self: flex-end; font-size: 11px; color: var(--muted); font-weight: 400; }
+.help-screen .chat .msg.explorer .n { display: none; }
+.help-screen .chat .msg.operator .n { color: var(--navy); font-weight: 600; }
+.help-screen .chat form { flex: none; flex-direction: row; align-items: flex-end; gap: 8px; margin: 0 -12px; padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--navy-t); }
+.help-screen .chat .compose .icon-btn { flex: none; height: 46px; }
+.help-screen .chat .compose .mic { width: 46px; border-radius: 23px; background: var(--navy); color: #fff; }
+.help-screen .chat .compose .mic.rec { background: var(--red); }
+.help-screen .chat textarea { flex: 1; min-height: 46px; height: 46px; max-height: 140px; padding: 11px 16px; border: 0; border-radius: 23px; resize: none; }
+.help-screen .chat .compose .btn.send { flex: none; width: 46px; min-height: 46px; height: 46px; padding: 0; border-radius: 23px; font-size: 0; background: var(--navy)
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12H19'/%3E%3Cpath d='M13 6L19 12L13 18'/%3E%3C/svg%3E") center / 22px no-repeat; }
+
+/* While a call is waiting to go out, "Cancel, I'm fine" sits at the bottom of the screen. */
+body.help-pending main { min-height: 100vh; min-height: 100dvh; padding-bottom: 0; }
+#help-pending:not([hidden]) { flex: 1; }
+.cancel-bar { margin-top: auto; position: sticky; bottom: 0; padding: 12px 0 calc(16px + env(safe-area-inset-bottom)); background: var(--ground); }
+/* A deep, muted red: clearly the alert, without the brand red's glare. */
+.help-screen .facts li.alerted { background: #9b2c35; border-color: #9b2c35; color: #fff; }
+.help-screen .facts li.alerted span { color: rgba(255,255,255,.82); }
 
 /* sign in */
 .signin { color: #fff; text-align: center; padding-top: 56px; }
@@ -251,6 +295,7 @@ details.more[open] summary { margin-bottom: 10px; }
 /* pills */
 .pill { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
   background: var(--navy-t); color: var(--navy); }
+.pill.active { background: var(--green); color: #fff; }
 .pill.help { background: var(--red); color: #fff; }
 .pill.overdue { background: var(--yellow); color: var(--ink); }
 .pill.closed { background: #e4e5ea; color: var(--muted); }
@@ -298,6 +343,18 @@ details.more[open] summary { margin-bottom: 10px; }
 .chat { color: var(--ink); text-align: left; }
 .chat .msg span { white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat .msg.operator small { color: var(--navy); font-weight: 600; }
+.chat .who2 > span:empty { display: none; }
+.chat .media { display: block; margin-top: 4px; }
+.chat .media img { display: block; max-width: 100%; max-height: 280px; border-radius: 8px; }
+.chat audio.media { width: 250px; max-width: 100%; }
+/* Composer: photo, text, voice, send. Like WhatsApp, the mic shows while the box is empty and Send once there's text. */
+.chat .compose { display: flex; align-items: flex-end; gap: 8px; }
+.chat .compose textarea { flex: 1; min-width: 0; }
+.chat .compose .btn.send { width: auto; flex: none; }
+.chat .compose:has(.mic:not([hidden])):has(textarea:placeholder-shown) .send { display: none; }
+.chat .compose:has(textarea:not(:placeholder-shown)) .mic { display: none; }
+.chat .compose .mic.rec { background: var(--red); color: #fff; border-radius: 22px; }
+.chat .compose[aria-busy="true"] { opacity: .6; pointer-events: none; }
 .group-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--zm); text-transform: uppercase; letter-spacing: .06em; }
 .trip-row { display: flex; flex-direction: column; gap: 8px; padding: 14px; background: #fff; border: 1px solid var(--zb); border-radius: 12px; text-decoration: none; color: var(--ink); }
 .trip-row.help { background: var(--red-t); border-color: var(--red); }
@@ -370,6 +427,17 @@ details.more[open] summary { margin-bottom: 10px; }
 /* The menu sheet slides in from the edge instead of appearing. */
 .sheet-wrap.open .scrim, .sheet-wrap:target .scrim { animation: scrim-in .2s ease-out both; }
 .sheet-wrap.open .sheet, .sheet-wrap:target .sheet { animation: sheet-in .26s cubic-bezier(.2, .7, .3, 1) both; }
+
+/* Screen changes: the old screen fades out and the new one fades in, rising slightly. The navy app bar stays put.
+   The opt-in (@view-transition) is inline in the layout's head. Reloads don't animate. */
+.appbar { view-transition-name: appbar; }
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(10px); } }
+::view-transition-old(root) { animation: vt-out .14s ease-in both; }
+::view-transition-new(root) { animation: vt-in .24s cubic-bezier(.2, .7, .3, 1) .06s both; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
 
 /* Progress fills rather than jumps. */
 .progress span { transition: background-color .3s ease; }

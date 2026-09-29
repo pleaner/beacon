@@ -1,6 +1,6 @@
 import { env, exports } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
-import { getOpenTrip, getTrip, listCompanions, parseReturnBy, startTrip, type NewTrip } from '../src/lib/trips'
+import { getOpenTrip, getTrip, listCompanions, listPets, markBack, parseReturnBy, startTrip, tripLine, type NewTrip } from '../src/lib/trips'
 import { setPlaceLookupForTests } from '../src/lib/places'
 import { afterEach } from 'vitest'
 import { cookieFor, makeAdmin, makeExplorer, makeOperator } from './helpers'
@@ -90,11 +90,78 @@ describe('GET /trip/new', () => {
     expect(html).toContain(`value="users/${e.user.id}/shoe.jpg"`)
     expect(html).toContain('name="start_lat"')
   })
+
+  it('remembers pets from trips in "My pets", once each, and lets the explorer edit the list', async () => {
+    const e = await makeExplorer()
+    const other = await makeExplorer()
+    const cookie = cookieFor(e.token)
+    const t: NewTrip = {
+      activity: 'hike', area: 'other', route_text: null, companions_text: null, wearing_text: null, photo_key: null,
+      shoe_photo_key: null, start_lat: null, start_lng: null, start_accuracy: null, return_by: Date.now() + 3_600_000,
+      checklist: [], battery_at_start: null,
+    }
+    const first = await startTrip(env.DB, e.user.id, { ...t, companions: [{ name: 'Rex, black Labrador', phone: null, kind: 'pet' }, { name: 'Thandi', phone: '+27821234567', kind: 'person' }] }, 1)
+    await markBack(env.DB, first.id, 2)
+    await startTrip(env.DB, e.user.id, { ...t, companions: [{ name: 'Milo, beagle', phone: null, kind: 'pet' }, { name: 'rex, black labrador', phone: null, kind: 'pet' }] }, 3)
+    await startTrip(env.DB, other.user.id, { ...t, companions: [{ name: 'Not yours', phone: null, kind: 'pet' }] }, 4)
+    expect((await listPets(env.DB, e.user.id)).sort()).toEqual(['Milo, beagle', 'rex, black labrador'])
+
+    const page = await (await exports.default.fetch(`${BASE}/pets`, { headers: { cookie } })).text()
+    expect(page).toContain('value="Milo, beagle"')
+    const fd = new FormData()
+    for (const n of ['Milo, beagle', ' ', 'Bella, collie', 'milo, BEAGLE']) fd.append('pet_name', n)
+    const res = await exports.default.fetch(`${BASE}/api/pets`, { method: 'POST', headers: { cookie }, body: fd, redirect: 'manual' })
+    expect(res.headers.get('location')).toBe('/pets?saved=1')
+    expect(await listPets(env.DB, e.user.id)).toEqual(['milo, BEAGLE', 'Bella, collie'])
+    // past trips keep their pets
+    expect((await listCompanions(env.DB, first.id)).map((c) => c.name)).toContain('Rex, black Labrador')
+  })
 })
 
 afterEach(() => setPlaceLookupForTests(null))
 
+// Every trip needs a destination, a route and a GPS fix; fill any the test leaves out.
+const WHERE = { destination_text: 'Maclear Beacon', route_text: 'Platteklip up', start_lat: -33.95, start_lng: 18.4 }
+const where = (fd: FormData) => { for (const [k, v] of Object.entries(WHERE)) if (!fd.has(k)) fd.append(k, String(v)); return fd }
+
 describe('POST /api/trips', () => {
+  it('asks what an "Other" trip is, and names it that way', async () => {
+    const e = await makeExplorer()
+    const post = (body: object) => exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { activity: 'other', return_by: Date.now() + 3_600_000, ...WHERE, ...body }))
+    expect((await post({})).status).toBe(400)
+    expect((await post({ activity_text: 'Kayaking' })).status).toBe(200)
+    const trip = (await getOpenTrip(env.DB, e.user.id))!
+    expect(trip.activity_text).toBe('Kayaking')
+    expect(tripLine({ ...trip, start_place: 'Kalk Bay' })).toBe('Kayaking from Kalk Bay')
+  })
+
+  it('keeps pets, even on a solo trip, and never gives them a phone', async () => {
+    const e = await makeExplorer()
+    const fd = new FormData()
+    fd.append('activity', 'hike'); fd.append('return_by', '2099-01-01T10:00'); fd.append('company', 'alone')
+    fd.append('companion_name', 'Ghost'); fd.append('pet_name', 'Rex, black Labrador'); fd.append('pet_name', '')
+    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: where(fd), redirect: 'manual' })
+    expect(res.status).toBe(303)
+    const trip = (await getOpenTrip(env.DB, e.user.id))!
+    expect((await listCompanions(env.DB, trip.id)).map((c) => [c.name, c.phone, c.kind])).toEqual([['Rex, black Labrador', null, 'pet']])
+  })
+
+  it('needs a destination, a route and a GPS fix', async () => {
+    const e = await makeExplorer()
+    const post = (body: object) => exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { activity: 'hike', return_by: Date.now() + 3_600_000, ...WHERE, ...body }))
+    expect((await post({ destination_text: '' })).status).toBe(400)
+    expect((await post({ route_text: null })).status).toBe(400)
+    expect((await post({ start_lat: null })).status).toBe(400)
+    expect(await getOpenTrip(env.DB, e.user.id)).toBeNull()
+
+    const fd = new FormData()
+    fd.append('activity', 'hike'); fd.append('return_by', '2099-01-01T10:00'); fd.append('destination_text', 'Lion\'s Head')
+    const html = await (await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: fd })).text()
+    // the message sits on the "Where are you going?" step
+    expect(html.indexOf('your route')).toBeGreaterThan(html.indexOf('Where are you going?'))
+    expect(html.indexOf('your route')).toBeLessThan(html.indexOf('When will you be back?'))
+  })
+
   it('starts without an area, with a destination and companions from a form', async () => {
     const e = await makeExplorer()
     const fd = new FormData()
@@ -106,7 +173,7 @@ describe('POST /api/trips', () => {
       fd.append('companion_name', n); fd.append('companion_phone', p); fd.append('companion_phone_country', cc)
     }
     fd.append('gear_photo', new File([new Uint8Array([1])], 'wing.jpg', { type: 'image/jpeg' }))
-    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: fd, redirect: 'manual' })
+    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: where(fd), redirect: 'manual' })
     expect(res.status).toBe(303)
     const trip = (await getOpenTrip(env.DB, e.user.id))!
     expect(trip.area).toBe('other')
@@ -118,7 +185,7 @@ describe('POST /api/trips', () => {
 
   it('ignores companions when going alone, and gear photos for activities without gear', async () => {
     const e = await makeExplorer()
-    const res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), {
+    const res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { ...WHERE,
       activity: 'hike', return_by: Date.now() + 3_600_000, company: 'alone', companions: [{ name: 'Ghost' }],
       gear_photo_key: `users/${e.user.id}/bike.jpg`,
     }))
@@ -135,17 +202,17 @@ describe('POST /api/trips', () => {
     fd.append('return_by', '2000-01-01T10:00')
     fd.append('destination_text', 'Maclear Beacon')
     fd.append('route_text', 'Platteklip up')
-    fd.append('checklist', 'Headtorch')
+    fd.append('checklist', 'Space blanket')
     fd.append('company', 'group')
     fd.append('companion_name', 'Zola'); fd.append('companion_phone', '0725550000'); fd.append('companion_phone_country', '27')
-    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: fd })
+    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: where(fd) })
     expect(res.status).toBe(400)
     const html = await res.text()
     expect(html).toContain('value="Maclear Beacon"')
     expect(html).toContain('>Platteklip up</textarea>')
     expect(html).toContain('value="Zola"')
     expect(html).toContain('value="725550000"')
-    expect(html).toMatch(/value="Headtorch" id="c\d+" checked/)
+    expect(html).toMatch(/value="Space blanket" id="c\d+" checked/)
     // the message sits on the "When will you be back?" step
     const when = html.indexOf('When will you be back?')
     expect(html.indexOf('must be a time in the future')).toBeGreaterThan(when)
@@ -155,7 +222,7 @@ describe('POST /api/trips', () => {
   it('names the start point after the trip starts', async () => {
     setPlaceLookupForTests(async (lat, lng) => (lat < -33 && lng > 18 ? 'Kloof Nek, Cape Town' : null))
     const e = await makeExplorer()
-    const res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), {
+    const res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { ...WHERE,
       activity: 'hike', return_by: Date.now() + 3_600_000, start_lat: -33.95, start_lng: 18.4,
     }))
     const { id } = await res.json<{ id: string }>()
@@ -166,7 +233,7 @@ describe('POST /api/trips', () => {
   it('starts a trip from json', async () => {
     const e = await makeExplorer()
     const return_by = Date.now() + 2 * 3_600_000
-    const res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), {
+    const res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { ...WHERE,
       activity: 'hike', area: 'table_mountain', route_text: 'Platteklip', return_by, checklist: ['Water', 'Torch'],
       start_lat: -33.95, start_lng: 18.4, start_accuracy: 8, battery: 77,
     }))
@@ -188,7 +255,7 @@ describe('POST /api/trips', () => {
     fd.append('checklist', 'Helmet')
     fd.append('checklist', 'Water')
     fd.append('shoe_photo', new File([new Uint8Array([1])], 'sole.png', { type: 'image/png' }))
-    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: fd, redirect: 'manual' })
+    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: where(fd), redirect: 'manual' })
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toBe('/trip')
     const trip = await getOpenTrip(env.DB, e.user.id)
@@ -198,7 +265,7 @@ describe('POST /api/trips', () => {
 
   it('reuses a previous shoe photo key', async () => {
     const e = await makeExplorer()
-    const res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), {
+    const res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { ...WHERE,
       activity: 'hike', area: 'other', return_by: Date.now() + 3_600_000, shoe_photo_key: `users/${e.user.id}/old.jpg`,
     }))
     expect(res.status).toBe(200)
@@ -207,13 +274,13 @@ describe('POST /api/trips', () => {
 
   it('rejects a bad activity, past return time, and a second open trip', async () => {
     const e = await makeExplorer()
-    let res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { activity: 'swim', area: 'other', return_by: Date.now() + 1000 }))
+    let res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { ...WHERE, activity: 'swim', area: 'other', return_by: Date.now() + 1000 }))
     expect(res.status).toBe(400)
-    res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { activity: 'hike', area: 'other', return_by: Date.now() - 1000 }))
+    res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { ...WHERE, activity: 'hike', area: 'other', return_by: Date.now() - 1000 }))
     expect(res.status).toBe(400)
-    res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { activity: 'hike', area: 'other', return_by: Date.now() + 1000 }))
+    res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { ...WHERE, activity: 'hike', area: 'other', return_by: Date.now() + 1000 }))
     expect(res.status).toBe(200)
-    res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { activity: 'hike', area: 'other', return_by: Date.now() + 1000 }))
+    res = await exports.default.fetch(`${BASE}/api/trips`, json(cookieFor(e.token), { ...WHERE, activity: 'hike', area: 'other', return_by: Date.now() + 1000 }))
     expect(res.status).toBe(409)
   })
 
@@ -229,7 +296,7 @@ describe('POST /api/trips', () => {
     fd.append('area', 'other')
     fd.append('return_by', '2099-01-01T10:00')
     fd.append('shoe_photo', new File([new Uint8Array([1])], 'sole.html', { type: 'text/html' }))
-    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: fd })
+    const res = await exports.default.fetch(`${BASE}/api/trips`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, body: where(fd) })
     expect(res.status).toBe(400)
     expect(await getOpenTrip(env.DB, e.user.id)).toBeNull()
   })

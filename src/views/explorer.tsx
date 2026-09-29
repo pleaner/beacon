@@ -1,8 +1,8 @@
 import type { FC } from 'hono/jsx'
 import { ACTIVITIES, BLOOD_TYPES, COUNTRY_CODES, EXTEND_OPTIONS_MINUTES, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity } from '../lib/constants'
-import type { Message, User } from '../lib/db'
+import type { Message, Position, User } from '../lib/db'
 import { formatPhone, splitPhone } from '../lib/phone'
-import { toLocalInput, tripLine, tripPlace, type RoutePoint, type Trip } from '../lib/trips'
+import { activityName, toLocalInput, tripLine, tripPlace, type RoutePoint, type Trip } from '../lib/trips'
 import { Chat } from './board'
 import { FlowHead, IconInput, IconTextarea, PhoneField, PhoneInputs, SelectField, Step } from './forms'
 import { Icon, type IconName } from './icons'
@@ -43,7 +43,7 @@ export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partia
     <FlowHead total={5} backHref="/" />
     <main>
       <form method="post" action="/api/profile" enctype="multipart/form-data" class="stack grow" data-steps>
-        <Step title="Who are you?" icon="user" eyebrowLabel="Your profile" lead="Tell us once. After that, each trip takes a minute to file.">
+        <Step title="Who are you?" lead="Tell us once. After that, each trip takes a minute to file.">
           {error && <div class="banner error" role="alert">{error}</div>}
           <div class="stack">
             <SelectField id="p-lang" name="language" label="Language" icon="globe" hideLabel value={v?.language ?? 'en'}
@@ -56,7 +56,7 @@ export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partia
           </div>
         </Step>
 
-        <Step title="Who should we call?" icon="phone" eyebrowLabel="Your profile" lead="If you're overdue or call for help, our operators can phone this person." skip>
+        <Step title="Who should we call?" lead="If you're overdue or call for help, our operators can phone this person." skip>
           <div class="stack">
             <div class="field">
               <label for="p-ename">Their name</label>
@@ -67,7 +67,7 @@ export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partia
           </div>
         </Step>
 
-        <Step title="Help searchers find you" icon="search" eyebrowLabel="Your profile" lead="A clear photo and a few numbers help searchers recognise you." skip>
+        <Step title="Help searchers find you" lead="A clear photo and a few numbers help searchers recognise you." skip>
           <label class="avatar-pick" data-preview>
             {user?.photo_key ? <img src={`/photos/${user.photo_key}`} alt="Your profile picture" /> : <Icon name="camera" size={30} />}
             <span class="sr">Profile picture</span>
@@ -91,7 +91,7 @@ export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partia
           </div>
         </Step>
 
-        <Step title="Anything medical?" icon="plus" eyebrowLabel="Your profile" lead="Only SARZA operators see this, to help rescuers look after you." skip>
+        <Step title="Anything medical?" lead="Only SARZA operators see this, to help rescuers look after you." skip>
           <div class="stack">
             <SelectField id="p-blood" name="blood_type" label="Blood type" value={v?.blood_type} placeholder="Don't know" options={opts(BLOOD_TYPES)} />
             <div class="field">
@@ -109,7 +109,7 @@ export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partia
           </div>
         </Step>
 
-        <Step title="Make sure we can reach you" icon="bell" eyebrowLabel="Your profile" lead="Two things make the alarm work. Without both, we can't tell you when you're overdue."
+        <Step title="Make sure we can reach you" lead="Guardian needs these to work. Without them, we can't tell you when you're overdue or find you when you need help."
           submit={<button class="btn" type="submit"><Icon name="check" size={24} stroke={2.4} />{user ? 'Save' : 'Finish'}</button>}>
           <div class="stack">
             <div class="setup" data-standalone>
@@ -125,6 +125,22 @@ export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partia
                 <strong>Allow notifications</strong>
                 <p>So we can gently ask if you're okay when you're late back.</p>
                 <button class="btn outline small js-only" type="button" data-enable-push>Allow notifications</button>
+              </div>
+            </div>
+            <div class="setup" data-permit="geolocation">
+              <span class="n">3</span>
+              <div>
+                <strong>Allow your location</strong>
+                <p>So we can send your position while you're out, and find you if you call for help.</p>
+                <button class="btn outline small js-only" type="button" data-ask>Allow location</button>
+              </div>
+            </div>
+            <div class="setup" data-permit="microphone">
+              <span class="n">4</span>
+              <div>
+                <strong>Allow the microphone</strong>
+                <p>So you can send SARZA a voice note if you need help.</p>
+                <button class="btn outline small js-only" type="button" data-ask>Allow microphone</button>
               </div>
             </div>
           </div>
@@ -200,23 +216,33 @@ const GearOrShoe: FC<{ label: string; name: string; fileName: string; keys: stri
 // What was sent, so a failed start comes back filled in. Photos can't be kept and must be picked again.
 export interface TripDraft {
   destination_text: string | null
+  activity_text: string | null
   route_text: string | null
   return_by: string | null
   checklist: string[]
-  companions: Array<{ name: string; phone: string | null }>
+  companions: Array<{ name: string; phone: string | null; kind: 'person' | 'pet' }>
   alone: boolean
 }
 
 export const NewTripForm: FC<{
-  user: User; activity: Activity; checklist: string[]; shoes: string[]; gear?: string[]; graceMinutes?: number; error?: string
-  errorAt?: 'intro' | 'when' | 'photos'; draft?: TripDraft
-}> = ({ activity, checklist, shoes, gear = [], graceMinutes = 30, error, errorAt = 'photos', draft }) => {
+  user: User; activity: Activity; checklist: string[]; shoes: string[]; gear?: string[]; knownPets?: string[]; graceMinutes?: number; error?: string
+  errorAt?: 'intro' | 'where' | 'when' | 'photos'; draft?: TripDraft
+}> = ({ activity, checklist, shoes, gear = [], knownPets = [], graceMinutes = 30, error, errorAt = 'photos', draft }) => {
   const errorBanner = (at: string) => error && errorAt === at ? <div class="banner error" role="alert">{error}</div> : null
   const noun = ACTIVITY_NOUN[activity]
   const icon = ACTIVITY_ICON[activity]
-  const label = `${ACTIVITIES[activity]} plan`
   const g = GEAR[activity]
   const defaultReturn = toLocalInput(Date.now() + 4 * 3_600_000)
+  const people = draft?.companions.filter((c) => c.kind !== 'pet') ?? []
+  const pets = draft?.companions.filter((c) => c.kind === 'pet') ?? []
+  // With other people along we ask for one group photo; app.js swaps this as the group changes.
+  const wear = activity === 'paraglide' ? ['in your harness and helmet', 'in harnesses and helmets']
+    : activity === 'mtb' ? ['in your helmet and kit', 'in helmets and kit'] : ['with your pack on', 'with packs on']
+  const photoCopy = {
+    solo: { title: 'Full-body photo, today', hint: `Head to toe, ${wear[0]}. It shows us everything you're wearing.` },
+    group: { title: 'Full-body group photo, today', hint: `Everyone head to toe, ${wear[1]}. It shows us what each of you is wearing.` },
+  }
+  const shot = !draft?.alone && people.some((c) => c.name) ? 'group' : 'solo'
   return (
     <div class="flow">
       <FlowHead total={6} backHref="/" cancelHref="/" />
@@ -228,35 +254,36 @@ export const NewTripForm: FC<{
           <input type="hidden" name="start_accuracy" />
           <input type="hidden" name="battery" />
 
-          <Step title="How Guardian works" lead="A minute now will increase the odds of us turning a bad day into a great story. Only your return time is needed."
-            icon={icon} eyebrowLabel={label} next={`Plan my ${noun}`}>
+          <Step title="How Guardian works" lead="Take Guardian with you, turn a bad day into a great story." next={`Plan my ${noun}`}>
             {errorBanner('intro')}
             <ol class="how">
-              <li><span class="n">1</span><div><strong>Tell us your plan</strong><p>Where you're going, when you'll be back, and anything that helps us find you if you ever need us.</p></div></li>
-              <li><span class="n">2</span><div><strong>We'll check in</strong><p>If you're not back by then, we'll gently ask if you're okay.</p></div></li>
-              <li><span class="n">3</span><div><strong>We come looking</strong><p>No answer within {graceMinutes} minutes? Our operators see your plan and last position, and we'll help bring you home safely.</p></div></li>
+              <li><span class="n">1</span><div><strong>Tell us your plan</strong><p>Where you're going, who's with you, <strong>when you're expecting to be back</strong>, and a quick photo so we know what you're wearing.</p></div></li>
+              <li><span class="n">2</span><div><strong>We'll check in</strong><p><strong>If you're not back</strong> by your expected time, we'll ask if you're okay. Answer, and that's the end of it.</p></div></li>
+              <li><span class="n">3</span><div><strong>We come looking</strong><p>We know who you are. We know what you want. We have a very particular set of skills. Skills we have acquired over very long careers. Skills that make us a lifeline for people like you. If you get home safe before the expected time, that'll be the end of it. We will not look for you, we will not pursue you, but if you don't, we will look for you, we will find you and <strong>we will bring you home</strong>.</p></div></li>
             </ol>
-            <div class="stack" style="gap: 10px;">
+            <div class="stack pin-bottom" style="gap: 10px;">
               <div class="banner soft"><Icon name="pin" size={20} /><span>During your {noun}, we drop a pin every 2 minutes, so we know where you were last.</span></div>
               <div class="banner soft red-t"><Icon name="arrow" size={20} /><span>Need us sooner? Slide for help any time, and we'll know right away.</span></div>
             </div>
           </Step>
 
-          <Step title="Where are you going?" icon={icon} eyebrowLabel={label}>
+          <Step title="Where are you going?">
+            {errorBanner('where')}
             <div class="startpoint" data-startpoint>
               <span class="map"><Icon name="pin" size={30} /></span>
               <div class="grow">
                 <strong><span class="sr">Starting from </span><span data-place>Finding your location…</span></strong>
-                <small><Icon name="gps" size={16} /><span class="sr">From GPS </span><span data-accuracy>Stay on this screen a moment</span></small>
+                <small><Icon name="gps" size={16} /><span class="sr">From GPS </span><span data-accuracy aria-live="polite">Stay on this screen a moment</span></small>
               </div>
             </div>
             <div class="stack">
-              <IconInput id="t-dest" name="destination_text" label="Headed to" icon="flag" hideLabel placeholder="Summit, peak or turnaround point" value={draft?.destination_text} />
-              <IconTextarea id="t-route" name="route_text" label="Route" icon="route" hideLabel placeholder="Way up, way down, where you'll stop" value={draft?.route_text} />
+              {activity === 'other' && <IconInput id="t-what" name="activity_text" label="What are you doing?" icon="other" placeholder="Kayaking, fishing, birding…" value={draft?.activity_text} required />}
+              <IconInput id="t-dest" name="destination_text" label="Headed to" icon="flag" hideLabel placeholder="Summit, peak or turnaround point" value={draft?.destination_text} required />
+              <IconTextarea id="t-route" name="route_text" label="Route" icon="route" hideLabel placeholder="Way up, way down, where you'll stop" value={draft?.route_text} required />
             </div>
           </Step>
 
-          <Step title="Who's with you?" icon="users" eyebrowLabel={label}>
+          <Step title="Who's with you?">
             <fieldset class="seg">
               <legend class="sr">Who's going</legend>
               <label><input type="radio" name="company" value="alone" data-company checked={!!draft?.alone} /><Icon name="user" size={20} />Just me</label>
@@ -264,20 +291,37 @@ export const NewTripForm: FC<{
             </fieldset>
             <div class="stack" data-people-wrap hidden={!!draft?.alone}>
               <ul class="people" data-people>
-                {draft?.companions.length
-                  ? draft.companions.map((c, i) => <CompanionRow n={i + 1} name={c.name} phone={c.phone} />)
+                {people.length
+                  ? people.map((c, i) => <CompanionRow n={i + 1} name={c.name} phone={c.phone} />)
                   : <><CompanionRow n={1} /><CompanionRow n={2} noJsOnly /></>}
               </ul>
               <button class="add-person js-only" type="button" data-add-person><Icon name="plus" size={22} stroke={2.4} />Add a person</button>
               <template data-person-template><CompanionRow n={0} /></template>
               <p class="note"><Icon name="mobile" size={18} /><span>Their numbers help us reach your group if we can't reach you.</span></p>
             </div>
+            <ul class="people" data-pets>
+              {pets.map((c) => <PetRow name={c.name} />)}
+              {!pets.length && <PetRow noJsOnly />}
+            </ul>
+            <template data-pet-template><PetRow /></template>
+            <button class="add-person js-only" type="button" data-add-pet><Icon name="plus" size={22} stroke={2.4} />Add a pet</button>
+            {/* "Add a pet" opens this when there are pets from earlier trips to pick from (app.js). */}
+            {knownPets.length > 0 && (
+              <div class="pet-picks" data-pet-picks hidden>
+                <p class="group-title">Add a pet</p>
+                {knownPets.map((n) => <button class="chip" type="button" data-pet-pick={n}><Icon name="paw" size={18} />{n}</button>)}
+                <button class="chip" type="button" data-pet-new><Icon name="plus" size={18} stroke={2.4} />New pet</button>
+              </div>
+            )}
           </Step>
 
-          <Step title="When will you be back?" icon={icon} eyebrowLabel={label}>
+          <Step title="When will you be back?">
             {errorBanner('when')}
             <div class="backby">
-              <label for="t-return">Back by</label>
+              <div class="row" style="justify-content: space-between;">
+                <label for="t-return">Back by</label>
+                <span class="in js-only" data-return-in></span>
+              </div>
               <div class="row js-only" style="align-items: baseline; gap: 12px;">
                 <span class="big" data-return-time></span>
                 <span class="day" data-return-day></span>
@@ -293,7 +337,7 @@ export const NewTripForm: FC<{
             <p class="note"><Icon name="clock" size={18} /><span>At this time we'll gently ask if you're okay. If we don't hear back within {graceMinutes} minutes, our operators are alerted. Don't worry about being exact, you can always add more time.</span></p>
           </Step>
 
-          <Step title="Before you go" icon="list" eyebrowLabel={label} lead="Tick what's true. Nothing here stops you starting.">
+          <Step title="Before you go" lead="Tick what's true. Nothing here stops you starting.">
             <div class="stack" style="gap: 2px;">
               {checklist.map((item, i) => (
                 <label class="check"><input type="checkbox" name="checklist" value={item} id={`c${i}`} checked={draft?.checklist.includes(item)} /><span>{item}</span></label>
@@ -302,18 +346,18 @@ export const NewTripForm: FC<{
             <p class="note" id="battery-line" hidden><Icon name="battery" size={20} /><span>Phone battery <span></span></span></p>
           </Step>
 
-          <Step title="What searchers look for" icon="camera" eyebrowLabel={label}
+          <Step title="What searchers look for"
             lead={g ? g.hint : 'A quick photo helps us recognise you, and your footprints.'}
             submit={<button class="btn red" type="submit" data-start><Icon name="arrow" size={24} stroke={2.4} />Start trip</button>}>
             {errorBanner('photos')}
-            <label class="photo-card" data-preview>
+            <label class="photo-card" data-preview data-photo-copy={JSON.stringify(photoCopy)}>
               <span class="frame"><Icon name="body" size={44} stroke={1.6} /></span>
               <span class="stack" style="gap: 4px;">
-                <strong>Full-body photo, today</strong>
-                <span class="hint">{activity === 'paraglide' ? 'Head to toe, in your harness and helmet.' : activity === 'mtb' ? 'Head to toe, in your helmet and kit.' : 'Head to toe, with your pack on.'} It shows us everything you're wearing.</span>
+                <strong data-photo-title>{photoCopy[shot].title}</strong>
+                <span class="hint" data-photo-hint>{photoCopy[shot].hint}</span>
                 <span class="go"><Icon name="camera" size={18} />Take photo</span>
               </span>
-              <input type="file" name="photo" accept="image/*" capture="environment" aria-label="Full-body photo, today" />
+              <input type="file" name="photo" accept="image/*" capture="environment" aria-label={photoCopy[shot].title} />
             </label>
             {g ? (
               <div class="grid2">
@@ -352,6 +396,37 @@ const CompanionRow: FC<{ n: number; noJsOnly?: boolean; name?: string; phone?: s
   )
 }
 
+// "My pets", from the menu. The whole list saves at once; removing a pet leaves past trips as they were.
+export const PetsPage: FC<{ pets: string[]; saved: boolean }> = ({ pets, saved }) => (
+  <main>
+    <a href="/" class="row" style="height: 44px; font-weight: 600; text-decoration: none; font-size: 14px; align-self: flex-start;"><Icon name="back" size={18} />Home</a>
+    <div class="stack" style="gap: 8px;">
+      <h1 class="display">My pets</h1>
+      <p class="lead">When you plan a trip, "Add a pet" offers these. Pets you take on a trip are added here too.</p>
+    </div>
+    {saved && <div class="banner ok" role="status">Saved.</div>}
+    <form method="post" action="/api/pets" class="stack" data-pet-editor>
+      <ul class="people" data-pets>
+        {pets.map((n) => <PetRow name={n} />)}
+        {!pets.length && <PetRow noJsOnly />}
+      </ul>
+      <template data-pet-template><PetRow /></template>
+      <button class="add-person js-only" type="button" data-add-pet><Icon name="plus" size={22} stroke={2.4} />Add a pet</button>
+      <button class="btn" type="submit"><Icon name="check" size={24} stroke={2.4} />Save</button>
+    </form>
+  </main>
+)
+
+const PetRow: FC<{ noJsOnly?: boolean; name?: string }> = ({ noJsOnly, name }) => (
+  <li class={noJsOnly ? 'person no-js-only' : 'person'} data-pet>
+    <div class="top">
+      <span class="avatar" aria-hidden="true"><Icon name="paw" size={20} /></span>
+      <input name="pet_name" type="text" aria-label="Pet's name and breed" placeholder="Name and breed, e.g. Rex, black Labrador" autocomplete="off" class="grow" value={name ?? ''} />
+      <button class="icon-btn js-only" type="button" data-remove-pet aria-label="Remove this pet"><Icon name="x" size={20} /></button>
+    </div>
+  </li>
+)
+
 // ---------- active trip ----------
 
 function clock(ms: number) {
@@ -369,7 +444,7 @@ export function leftText(returnBy: number, now: number) {
   return mins >= 0 ? `${fmt(mins)} left` : `Overdue by ${fmt(-mins)}`
 }
 
-export const ActiveTrip: FC<{ trip: Trip; messages: Message[]; error?: string; now?: number }> = ({ trip, messages, error, now = Date.now() }) => {
+export const ActiveTrip: FC<{ trip: Trip; name: string; error?: string; now?: number }> = ({ trip, name, error, now = Date.now() }) => {
   const overdue = trip.status === 'overdue'
   return (
     <main class={overdue ? 'overdue' : undefined}>
@@ -419,30 +494,73 @@ export const ActiveTrip: FC<{ trip: Trip; messages: Message[]; error?: string; n
       </div>
       <p id="help-status" class="lead" role="status"></p>
       <p class="note"><Icon name="pin" size={18} /><span>While this screen is open we send your position every two minutes. Lock your phone and it stops.</span></p>
-      <Chat tripId={trip.id} messages={messages} placeholder="Message SARZA" />
+      <HelpPending trip={trip} name={name} overdue={overdue} now={now} />
     </main>
   )
 }
 
-export const HelpScreen: FC<{ trip: Trip; messages: Message[]; emergency: string; error?: string }> = ({ trip, messages, emergency, error }) => (
-  <main class="help-screen" style="min-height: 100vh; min-height: 100dvh;">
-    <a href="/" class="brand" style="align-self: flex-start;">
-      <img src="/sarza-logo.png" alt="SARZA Search &amp; Rescue" />
-      <span><b>Guardian</b></span>
-    </a>
+// Shown by app.js while a call for help hasn't reached the server yet. The phone keeps retrying.
+const HelpPending: FC<{ trip: Trip; name: string; overdue: boolean; now: number }> = ({ trip, name, overdue, now }) => {
+  const back = backBy(trip.return_by, now)
+  return (
+    <section id="help-pending" class="help-screen" hidden data-sms-text={`HELP from ${name}. ${tripLine(trip)}.`}>
+      <ul class="facts">
+        <li class="alerted"><Icon name="bell" /><div><b data-pending-title>Calling SARZA…</b><span data-pending-sub></span></div></li>
+        <li>
+          <Icon name="route" />
+          <div>
+            <b>We have your trip plan.</b>
+            <span>{overdue ? `You were due back at ${back}, so we're already checking on you.` : `You're due back at ${back}. If we don't hear from you by then, we'll come and find you.`}</span>
+          </div>
+        </li>
+        <li><Icon name="flag" /><div><b>Stay where you are.</b><span>{STAY}</span></div></li>
+      </ul>
+      <a class="btn outline" data-help-sms hidden>Send SARZA a text</a>
+      <div class="cancel-bar"><button class="btn outline" type="button" data-help-undo>Cancel, I'm fine</button></div>
+    </section>
+  )
+}
+
+// The three things someone who called for help needs to know. The server renders the "signal" case from the last
+// position we hold; app.js switches to the no-signal case when fixes stop reaching us, and back when they do.
+const STAY = "If it's safe where you are, stay put."
+// The position we hold, shown back to them as proof. app.js formats it the same way.
+function fixLine(p: { lat: number; lng: number; altitude: number | null }) {
+  const deg = (v: number, pos: string, neg: string) => `${Math.abs(v).toFixed(5)}° ${v < 0 ? neg : pos}`
+  return `${deg(p.lat, 'N', 'S')}, ${deg(p.lng, 'E', 'W')}` + (p.altitude != null ? `\nElevation ${Math.round(p.altitude)} m` : '')
+}
+// "16:30", or "16:30 tomorrow" / "16:30 Tue" when it isn't today.
+function backBy(ms: number, now = Date.now()) {
+  const day = dayWord(ms, now)
+  return day === 'Today' ? clock(ms) : `${clock(ms)} ${day === 'Tomorrow' ? 'tomorrow' : day}`
+}
+export const HelpScreen: FC<{ trip: Trip; messages: Message[]; emergency: string; lastFix: Position | null; error?: string }> = ({ trip, messages, emergency, lastFix, error }) => (
+  <main class="help-screen">
     {error && <div class="banner error" role="alert">{error}</div>}
-    <div class="rings" aria-hidden="true"><div><div></div></div></div>
-    <div class="alerted" role="status">SARZA has been alerted</div>
-    <h1 class="display">Stay where you are</h1>
-    <p style="margin: 0; font-size: 17px;">Keep your phone on and this screen open if you can. We send your position every 30 seconds while it's open.</p>
-    <a class="btn white big" href={`tel:${emergency}`}><Icon name="phone" size={24} />Phone SARZA {formatPhone(emergency)}</a>
-    <p id="help-status" role="status" style="margin: 0; font-size: 14px;"></p>
-    <Chat tripId={trip.id} messages={messages} placeholder="Message SARZA" />
-    <div class="grow"></div>
-    <p style="margin: 0; font-size: 14px;">Trip: {tripLine(trip)}</p>
+    <ul class="facts">
+      <li class="alerted"><Icon name="bell" /><div><b>SARZA has been alerted.</b><span>We'll contact you shortly.</span></div></li>
+      <li id="help-where" role="status" data-emergency={emergency} data-emergency-label={formatPhone(emergency)}
+        data-lat={lastFix?.lat} data-lng={lastFix?.lng} data-alt={lastFix?.altitude ?? undefined} data-at={lastFix?.at} data-back={backBy(trip.return_by)}>
+        <Icon name="gps" />
+        <div>
+          <b>{lastFix ? 'We know where you are.' : 'Finding your location…'}</b>
+          <span id="help-status">{lastFix ? `Last position ${clock(lastFix.at)}` : ''}</span>
+          <span id="help-fix" class="fix">{lastFix ? fixLine(lastFix) : ''}</span>
+        </div>
+      </li>
+      <li><Icon name="flag" /><div><b>Stay where you are.</b><span id="help-stay">{lastFix ? `${STAY} We know where you are.` : STAY}</span></div></li>
+    </ul>
+    <div id="alerts-off" class="banner warn" hidden>
+      <Icon name="bell" />
+      <div class="stack" style="gap: 10px;">
+        <span>Notifications are off, so you won't hear when SARZA replies.</span>
+        <button class="btn small" type="button" data-enable-push>Turn on notifications</button>
+      </div>
+    </div>
     <form method="post" action={`/api/trips/${trip.id}/cancel`}>
-      <button class="btn ghost" type="submit">Cancel, I'm fine</button>
+      <button class="btn outline" type="submit">Cancel, I'm fine</button>
     </form>
+    <Chat tripId={trip.id} messages={messages} placeholder="Message SARZA" me="explorer" />
   </main>
 )
 
@@ -474,7 +592,7 @@ function elevationPath(route: RoutePoint[], x: number, y: number, w: number, h: 
 export const MAP_BOX = { y: 420, h: 960 }
 // "HIKE · LION'S HEAD" from what the explorer typed in "Headed to"; without it, "HIKE COMPLETE".
 function cardTitle(trip: Trip) {
-  const activity = trip.activity === 'other' ? 'Trip' : ACTIVITIES[trip.activity]
+  const activity = trip.activity === 'other' ? trip.activity_text || 'Trip' : ACTIVITIES[trip.activity]
   const dest = trip.destination_text?.trim()
   const short = dest && dest.length > 40 ? dest.slice(0, 40).replace(/\s+\S*$/, '') + '…' : dest
   return (short ? `${activity} · ${short}` : `${activity} complete`).toUpperCase()
@@ -551,7 +669,7 @@ export const TripCard: FC<{ trip: Trip; summary: Summary; map: CardMap | null; l
 
 export const TripDone: FC<{ trip: Trip; summary: Summary; map: CardMap | null; logo: string | null; host: string; appUrl: string }> = ({ trip, summary, map, logo, host, appUrl }) => (
   <main class="done" data-share-url={appUrl} data-share-name={`guardian-${trip.id.slice(0, 8)}.png`}
-    data-share-text={`Back safe from my ${ACTIVITIES[trip.activity].toLowerCase()}: ${km(summary.distance)}, ${summary.climb} m up. I file a trip plan with Guardian by SARZA, so search and rescue knows where I went.`}>
+    data-share-text={`Back safe from my ${activityName(trip).toLowerCase()}: ${km(summary.distance)}, ${summary.climb} m up. I file a trip plan with Guardian by SARZA, so search and rescue knows where I went.`}>
     <TripCard trip={trip} summary={summary} map={map} logo={logo} host={host} />
     <div class="stack actions" style="gap: 12px;">
       <button class="btn yellow big js-only" type="button" data-share-card><Icon name="share" size={24} />Share your trip</button>

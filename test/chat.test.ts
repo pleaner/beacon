@@ -82,17 +82,44 @@ describe('trip chat', () => {
     expect(await list(url, oc)).toHaveLength(1)
   })
 
-  it('renders the thread escaped on both screens, and a form post redirects back', async () => {
+  it('renders the thread escaped on the board, keeps it off the active trip screen, and a form post redirects back', async () => {
     const { trip, url, ec, oc } = await setup()
     const form = { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'body=' + encodeURIComponent('<b>hi</b>') }
     const res = await call(url, { ...form, cookie: ec })
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toBe('/trip')
-    for (const [path, cookie] of [['/trip', ec], [`/board/trips/${trip.id}`, oc]] as const) {
-      const html = await (await call(path, { cookie })).text()
-      expect(html).toContain(`data-chat="${trip.id}"`)
-      expect(html).toContain('&lt;b&gt;hi&lt;/b&gt;')
-      expect(html).not.toContain('<b>hi</b>')
+    expect(await (await call('/trip', { cookie: ec })).text()).not.toContain('data-chat')
+    const html = await (await call(`/board/trips/${trip.id}`, { cookie: oc })).text()
+    expect(html).toContain(`data-chat="${trip.id}"`)
+    expect(html).toContain('&lt;b&gt;hi&lt;/b&gt;')
+    expect(html).not.toContain('<b>hi</b>')
+  })
+
+  it('carries photos and voice notes, served only to the trip explorer and operators', async () => {
+    const { trip, url, ec, oc } = await setup()
+    const other = cookieFor((await makeExplorer({ name: 'Other' })).token)
+    const upload = (file: File, cookie: string, body = '') => {
+      const fd = new FormData()
+      fd.append('body', body)
+      fd.append('media', file)
+      return call(url, { method: 'POST', cookie, headers: { accept: 'application/json' }, body: fd })
     }
+    expect((await upload(new File([new Uint8Array([1, 2, 3])], 'p.jpg', { type: 'image/jpeg' }), ec, 'By the marker')).status).toBe(200)
+    expect((await upload(new File([new Uint8Array([4, 5])], 'v.webm', { type: 'audio/webm;codecs=opus' }), oc)).status).toBe(200)
+    const msgs = await list(url, ec)
+    expect(msgs.map((m) => [m.body, m.media_type])).toEqual([['By the marker', 'image/jpeg'], ['', 'audio/webm']])
+
+    const photoUrl = `${url}/${msgs[0]!.id}/media`
+    const mine = await call(photoUrl, { cookie: ec })
+    expect(mine.headers.get('content-type')).toBe('image/jpeg')
+    expect([...new Uint8Array(await mine.arrayBuffer())]).toEqual([1, 2, 3])
+    expect((await call(`${url}/${msgs[1]!.id}/media`, { cookie: oc })).status).toBe(200)
+    expect((await call(photoUrl, { cookie: other })).status).toBe(404)
+    const board = await (await call(`/board/trips/${trip.id}`, { cookie: oc })).text()
+    expect(board).toContain(`<img src="${photoUrl}"`)
+    expect(board).toContain(`<audio class="media" controls="" preload="none" src="${url}/${msgs[1]!.id}/media"`)
+
+    expect((await upload(new File(['x'], 'x.txt', { type: 'text/plain' }), ec)).status).toBe(400)
+    expect((await call(url, post({ body: '  ' }, ec))).status).toBe(400)
   })
 })

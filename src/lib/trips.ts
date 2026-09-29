@@ -30,6 +30,7 @@ export interface Trip {
   destination_text: string | null
   start_place: string | null
   gear_photo_key: string | null
+  activity_text: string | null
 }
 
 export interface Companion {
@@ -38,14 +39,16 @@ export interface Companion {
   name: string
   phone: string | null
   sort: number
+  kind: 'person' | 'pet'
 }
 
 export interface NewTrip {
   activity: Activity
   area?: Area
   destination_text?: string | null
+  activity_text?: string | null
   gear_photo_key?: string | null
-  companions?: Array<{ name: string; phone: string | null }>
+  companions?: Array<{ name: string; phone: string | null; kind?: 'person' | 'pet' }>
   route_text: string | null
   companions_text: string | null
   wearing_text: string | null
@@ -75,17 +78,22 @@ export async function startTrip(db: DB, userId: string, t: NewTrip, now: number)
     .prepare(
       `INSERT INTO trips (id, user_id, activity, area, route_text, companions_text, wearing_text, photo_key,
         shoe_photo_key, start_lat, start_lng, start_accuracy, start_at, return_by, checklist_json,
-        battery_at_start, status, created_at, destination_text, gear_photo_key)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?)`,
+        battery_at_start, status, created_at, destination_text, gear_photo_key, activity_text)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?)`,
     )
     .bind(id, userId, t.activity, t.area ?? 'other', t.route_text, t.companions_text, t.wearing_text, t.photo_key,
       t.shoe_photo_key, t.start_lat, t.start_lng, t.start_accuracy, now, t.return_by,
-      JSON.stringify(t.checklist), t.battery_at_start, now, t.destination_text ?? null, t.gear_photo_key ?? null)
-  const addCompanion = db.prepare('INSERT INTO companions (trip_id, name, phone, sort) VALUES (?,?,?,?)')
-  const companions = (t.companions ?? []).slice(0, 30).map((c, i) => addCompanion.bind(id, c.name, c.phone, i))
+      JSON.stringify(t.checklist), t.battery_at_start, now, t.destination_text ?? null, t.gear_photo_key ?? null,
+      t.activity === 'other' ? t.activity_text ?? null : null)
+  const addCompanion = db.prepare('INSERT INTO companions (trip_id, name, phone, sort, kind) VALUES (?,?,?,?,?)')
+  const companions = (t.companions ?? []).slice(0, 30).map((c, i) => addCompanion.bind(id, c.name, c.phone, i, c.kind ?? 'person'))
+  // Pets on this trip join (or move to the top of) "My pets".
+  const putPet = db.prepare(PET_UPSERT)
+  const pets = (t.companions ?? []).filter((c) => c.kind === 'pet' && c.name.trim()).slice(0, 20)
+    .map((c) => putPet.bind(userId, c.name.trim(), c.name.trim().toLowerCase(), now))
   try {
     // One batch, so a trip never exists without its companions.
-    await db.batch([insertTrip, ...companions])
+    await db.batch([insertTrip, ...companions, ...pets])
   } catch (e) {
     if (String(e).includes('UNIQUE')) throw new TripOpenError()
     throw e
@@ -121,6 +129,23 @@ export async function previousShoePhotos(db: DB, userId: string): Promise<string
       .all<{ k: string }>()
   ).results
   return rows.map((r) => r.k)
+}
+
+// The explorer's saved pets ("My pets"), most recently taken on a trip first.
+export async function listPets(db: DB, userId: string): Promise<string[]> {
+  const rows = (await db.prepare('SELECT name FROM pets WHERE user_id = ? ORDER BY used_at DESC, id DESC').bind(userId).all<{ name: string }>()).results
+  return rows.map((r) => r.name)
+}
+const PET_UPSERT = `INSERT INTO pets (user_id, name, name_key, used_at) VALUES (?,?,?,?)
+  ON CONFLICT (user_id, name_key) DO UPDATE SET name = excluded.name, used_at = excluded.used_at`
+// Replaces the list from the "My pets" page, keeping the order shown.
+export async function setPets(db: DB, userId: string, names: string[], now: number) {
+  const clean = [...new Map(names.map((n) => n.trim().slice(0, 80)).filter(Boolean).map((n) => [n.toLowerCase(), n])).values()].slice(0, 20)
+  const put = db.prepare(PET_UPSERT)
+  await db.batch([
+    db.prepare('DELETE FROM pets WHERE user_id = ?').bind(userId),
+    ...clean.map((n, i) => put.bind(userId, n, n.toLowerCase(), now - i)),
+  ])
 }
 
 // Wing or bike photos from earlier trips of the same activity, newest first.
@@ -178,6 +203,25 @@ export function operatorClose(db: DB, id: string, now: number) {
     db.prepare(`UPDATE trips SET status = 'closed', closed_at = ?, closed_reason = 'operator_closed' WHERE id = ? AND status != 'closed'`).bind(now, id),
   )
 }
+// An admin sets the state by hand. Each state gets the timestamps the cron and screens expect of it, so the trip
+// carries on from there as if it had got there on its own: overdue waits out the grace period before operators are
+// pushed, help alerts operators on the next cron run. Reopening fails (TripOpenError) if the explorer has another open trip.
+export const ADMIN_STATUSES = ['active', 'overdue', 'help', 'closed'] as const
+export async function adminSetStatus(db: DB, id: string, status: (typeof ADMIN_STATUSES)[number], now: number) {
+  const sql = {
+    active: `UPDATE trips SET status = 'active', prompted_at = NULL, operators_alerted_at = NULL, help_alerted_at = NULL, closed_at = NULL, closed_reason = NULL WHERE id = ?`,
+    overdue: `UPDATE trips SET status = 'overdue', prompted_at = COALESCE(prompted_at, ?), help_alerted_at = NULL, closed_at = NULL, closed_reason = NULL WHERE id = ?`,
+    help: `UPDATE trips SET status = 'help', help_alerted_at = NULL, closed_at = NULL, closed_reason = NULL WHERE id = ?`,
+    closed: `UPDATE trips SET status = 'closed', closed_at = COALESCE(closed_at, ?), closed_reason = COALESCE(closed_reason, 'operator_closed') WHERE id = ?`,
+  }[status]
+  const stmt = status === 'overdue' || status === 'closed' ? db.prepare(sql).bind(now, id) : db.prepare(sql).bind(id)
+  try {
+    return await changed(stmt)
+  } catch (e) {
+    if (String(e).includes('UNIQUE')) throw new TripOpenError()
+    throw e
+  }
+}
 export function markOverdue(db: DB, id: string, now: number) {
   return changed(
     db
@@ -220,7 +264,7 @@ export async function listOpenTrips(db: DB): Promise<OpenTripRow[]> {
     await db
       .prepare(
         `SELECT t.*, u.name AS user_name, u.phone AS user_phone,
-           (SELECT COUNT(*) FROM companions c WHERE c.trip_id = t.id) AS companion_count
+           (SELECT COUNT(*) FROM companions c WHERE c.trip_id = t.id AND c.kind = 'person') AS companion_count
          FROM trips t JOIN users u ON u.id = t.user_id
          WHERE t.status != 'closed'
          ORDER BY CASE t.status WHEN 'help' THEN 0 WHEN 'overdue' THEN 1 ELSE 2 END, t.return_by ASC`,
@@ -256,9 +300,14 @@ export function tripPlace(t: Pick<Trip, 'start_place' | 'area'>): string | null 
   return t.area && t.area !== 'other' ? AREAS[t.area] : null
 }
 
-export function tripLine(t: Pick<Trip, 'activity' | 'start_place' | 'area'>): string {
+// "Kayaking" for an "Other" trip that says what it is, else the activity's own name.
+export function activityName(t: Pick<Trip, 'activity'> & { activity_text?: string | null }): string {
+  return (t.activity === 'other' && t.activity_text) || ACTIVITIES[t.activity] || t.activity
+}
+
+export function tripLine(t: Pick<Trip, 'activity' | 'start_place' | 'area'> & { activity_text?: string | null }): string {
   const place = tripPlace(t)
-  return place ? `${ACTIVITIES[t.activity]} from ${place}` : ACTIVITIES[t.activity]
+  return place ? `${activityName(t)} from ${place}` : activityName(t)
 }
 
 export interface RoutePoint { lat: number; lng: number; alt: number | null; dist: number }

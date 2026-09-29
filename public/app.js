@@ -47,6 +47,36 @@
   })))
   if (vapid && granted()) subscribePush().catch(() => { if (off) off.hidden = false })
 
+  // Location and microphone, asked for during profile set-up so the browser's prompt doesn't first appear mid-trip.
+  // Photos need no permission: the photo picker is the phone's own.
+  const ask = {
+    geolocation: () => new Promise((ok, fail) => navigator.geolocation.getCurrentPosition(ok, fail, { timeout: 20000 })),
+    microphone: () => navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => s.getTracks().forEach((t) => t.stop())),
+  }
+  const blocked = {
+    geolocation: "Location is blocked. Turn it on for Guardian in your phone's settings, then try again.",
+    microphone: "The microphone is blocked. Turn it on for Guardian in your phone's settings, then try again.",
+  }
+  $$('[data-permit]').forEach((row) => {
+    const name = row.dataset.permit
+    const button = $('[data-ask]', row)
+    const done = () => { row.classList.add('done'); button.hidden = true }
+    navigator.permissions?.query({ name }).then((p) => { if (p.state === 'granted') done() }).catch(() => {})
+    button.addEventListener('click', () => ask[name]().then(done, () => alert(blocked[name])))
+  })
+
+  // "My pets": add and remove rows; the form saves the whole list.
+  const petEditor = $('[data-pet-editor]')
+  if (petEditor) {
+    const rows = $('[data-pets]', petEditor)
+    $$('.no-js-only', rows).forEach((li) => li.remove())
+    $('[data-add-pet]', petEditor).addEventListener('click', () => {
+      rows.append($('[data-pet-template]', petEditor).content.firstElementChild.cloneNode(true))
+      $$('input', rows).pop().focus()
+    })
+    rows.addEventListener('click', (e) => e.target.closest('[data-remove-pet]')?.closest('[data-pet]').remove())
+  }
+
   // ---------- multi-step forms ----------
   const stepForm = $('[data-steps]')
   if (stepForm) {
@@ -67,10 +97,13 @@
       if (focus) { const h = $('h1', steps[at]); if (h) { h.setAttribute('tabindex', '-1'); h.focus() } }
       stepForm.dispatchEvent(new CustomEvent('step', { detail: at }))
     }
+    // A step holding the start point can't pass until the phone has given us a GPS fix.
+    const noGps = (step) => $('[data-startpoint]', step) && !stepForm.start_lat?.value
     function valid(step) {
       for (const el of $$('input, select, textarea', step)) {
         if (!el.checkValidity()) { el.reportValidity(); return false }
       }
+      if (noGps(step)) { $('[data-startpoint]', step).dispatchEvent(new Event('needgps')); return false }
       return true
     }
     stepForm.addEventListener('click', (e) => {
@@ -92,7 +125,7 @@
       if (at < steps.length - 1) { e.preventDefault(); if (valid(steps[at])) show(at + 1, true) }
     })
     stepForm.addEventListener('submit', (e) => {
-      const bad = steps.findIndex((s) => $$('input, select, textarea', s).some((el) => !el.checkValidity()))
+      const bad = steps.findIndex((s) => noGps(s) || $$('input, select, textarea', s).some((el) => !el.checkValidity()))
       if (bad !== -1) { e.preventDefault(); show(bad); valid(steps[bad]) }
     })
     show(errorStep === -1 ? 0 : errorStep)
@@ -145,9 +178,11 @@
   if (form) {
     const placeEl = $('[data-place]', form)
     const accEl = $('[data-accuracy]', form)
+    const startEl = $('[data-startpoint]', form)
     let placeName = null
-    navigator.geolocation?.getCurrentPosition(
+    const locate = () => navigator.geolocation?.getCurrentPosition(
       async (p) => {
+        startEl.classList.remove('need')
         form.start_lat.value = p.coords.latitude
         form.start_lng.value = p.coords.longitude
         form.start_accuracy.value = p.coords.accuracy
@@ -159,9 +194,21 @@
           if (j.place) { placeName = j.place; placeEl.textContent = j.place; summary() }
         } catch {}
       },
-      () => { placeEl.textContent = "We couldn't find you yet"; accEl.textContent = 'Allow location so we know where you started' },
+      (err) => {
+        placeEl.textContent = "We couldn't find you yet"
+        accEl.textContent = err.code === err.PERMISSION_DENIED
+          ? 'Location is off. Turn it on for this site in your browser settings, then tap Next.'
+          : 'Still looking. Step outside if you can, then tap Next.'
+      },
       { enableHighAccuracy: true, timeout: 15000 },
     )
+    locate()
+    startEl.addEventListener('needgps', () => {
+      startEl.classList.add('need')
+      if (!navigator.geolocation) { accEl.textContent = "This browser can't share your location. Try another browser."; return }
+      accEl.textContent = 'We need your location before you go. Checking again…'
+      locate()
+    })
     battery().then((b) => {
       if (b == null) return
       form.battery.value = b
@@ -189,6 +236,10 @@
       if (isNaN(d)) return
       $('[data-return-time]').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`
       $('[data-return-day]').textContent = dayWord(d)
+      const mins = Math.max(0, Math.round((d - Date.now()) / 60000))
+      const parts = [[Math.floor(mins / 10080), 'w'], [Math.floor(mins / 1440) % 7, 'd'], [Math.floor(mins / 60) % 24, 'h'], [mins % 60, 'm']]
+        .filter(([n]) => n).map(([n, u]) => n + u)
+      $('[data-return-in]').textContent = `in ${parts.join(' ') || '0m'}`
       summary()
     }
     ret.addEventListener('input', () => { $$('[data-plus-hours]').forEach((b) => b.setAttribute('aria-pressed', 'false')); showReturn() })
@@ -200,12 +251,15 @@
       showReturn()
     }))
     showReturn()
+    form.activity_text?.addEventListener('input', summary)
+    setInterval(showReturn, 30000) // keep the countdown honest while they sit on the step
 
     function summary() {
       const line = $('[data-summary-line]', form)
       const when = $('[data-summary-when]', form)
       if (!line) return
-      const act = line.dataset.base || (line.dataset.base = line.textContent)
+      const base = line.dataset.base || (line.dataset.base = line.textContent)
+      const act = form.activity_text?.value.trim() || base
       line.textContent = placeName ? `${act} from ${placeName}` : act
       const d = new Date(ret.value)
       const ticked = $$('input[name=checklist]', form)
@@ -223,6 +277,43 @@
       list.append(tpl.content.firstElementChild.cloneNode(true))
       $$('input[name=companion_name]', list).pop().focus()
     })
+    // One person, a full-body photo; more than one, a group photo. Pets don't count.
+    const photoCard = $('[data-photo-copy]', form)
+    const photoCopy = JSON.parse(photoCard.dataset.photoCopy)
+    form.addEventListener('step', () => {
+      const group = form.company.value === 'group' && $$('input[name=companion_name]', list).some((i) => i.value.trim())
+      const c = photoCopy[group ? 'group' : 'solo']
+      $('[data-photo-title]', photoCard).textContent = c.title
+      $('[data-photo-hint]', photoCard).textContent = c.hint
+      $('input[type=file]', photoCard).setAttribute('aria-label', c.title)
+    })
+    const pets = $('[data-pets]', form)
+    $$('.no-js-only', pets).forEach((li) => li.remove())
+    const addPet = (name = '') => {
+      pets.append($('[data-pet-template]', form).content.firstElementChild.cloneNode(true))
+      const input = $$('input[name=pet_name]', pets).pop()
+      input.value = name
+      if (!name) input.focus()
+    }
+    // With pets from earlier trips, "Add a pet" opens a picker: one of those, or a new one.
+    // A pet already on the list isn't offered; with nothing left to offer, it adds a blank row straight away.
+    const addPetBtn = $('[data-add-pet]', form)
+    const picker = $('[data-pet-picks]', form)
+    const picks = $$('[data-pet-pick]', form)
+    const syncPicks = () => {
+      const on = $$('input[name=pet_name]', pets).map((i) => i.value.trim().toLowerCase())
+      picks.forEach((b) => { b.hidden = on.includes(b.dataset.petPick.toLowerCase()) })
+    }
+    const closePicker = () => { if (picker) picker.hidden = true; addPetBtn.hidden = false }
+    addPetBtn.addEventListener('click', () => {
+      syncPicks()
+      if (!picks.some((b) => !b.hidden)) return addPet()
+      picker.hidden = false
+      addPetBtn.hidden = true
+    })
+    picks.forEach((b) => b.addEventListener('click', () => { addPet(b.dataset.petPick); closePicker() }))
+    if (picker) $('[data-pet-new]', picker).addEventListener('click', () => { closePicker(); addPet() })
+    pets.addEventListener('click', (e) => e.target.closest('[data-remove-pet]')?.closest('[data-pet]').remove())
     list.addEventListener('click', (e) => {
       const rm = e.target.closest('[data-remove-person]')
       if (!rm) return
@@ -244,6 +335,9 @@
     if (flag) flag.style.visibility = sel.value === '27' ? 'visible' : 'hidden'
     sel.style.paddingLeft = sel.value === '27' ? '' : '14px'
   }))
+
+  // The SARZA text number, set by admins. Kept on the phone so it's there when the signal isn't.
+  if (body.dataset.sms !== undefined) { try { localStorage.setItem('sms', body.dataset.sms) } catch {} }
 
   // ---------- live trip ----------
   const tripId = body.dataset.tripId
@@ -273,30 +367,73 @@
           if (!res.ok) return
           // fixes taken while this batch was in flight were appended after it
           save(load().slice(batch.length))
-          lastSent = new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
+          delivered = batch[batch.length - 1]
         }
       } catch {} finally { sending = false; show() }
     }
-    // On the help screen, say whether positions are reaching SARZA or waiting for signal.
-    let lastSent = ''
-    function show() {
-      if (body.dataset.tripStatus !== 'help' || !status) return
-      const n = load().length
-      const sent = lastSent ? 'Position sent ' + lastSent : ''
-      status.textContent = n ? `${n} ${n === 1 ? 'position' : 'positions'} waiting for signal` + (sent ? '. Last ' + sent.toLowerCase() : '') : sent
+    // On the help screen, two cases. Signal, and the last fix we delivered is near where the phone is now: we know
+    // where they are. No signal (fixes queued, or the phone offline): we still have their plan and return time.
+    const where = $('#help-where')
+    let delivered = where && where.dataset.at
+      ? { lat: +where.dataset.lat, lng: +where.dataset.lng, altitude: where.dataset.alt ? +where.dataset.alt : null, at: +where.dataset.at }
+      : null
+    let latest = null
+    let noFix = false
+    const deg = (v, pos, neg) => `${Math.abs(v).toFixed(5)}° ${v < 0 ? neg : pos}`
+    const fixLine = (p) => `${deg(p.lat, 'N', 'S')}, ${deg(p.lng, 'E', 'W')}` + (p.altitude != null ? `\nElevation ${Math.round(p.altitude)} m` : '')
+    const hhmm = (ms) => new Date(ms).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
+    const metres = (a, b) => {
+      const r = Math.PI / 180
+      return 6371000 * Math.hypot((b.lng - a.lng) * r * Math.cos(((a.lat + b.lat) / 2) * r), (b.lat - a.lat) * r)
     }
+    function show() {
+      if (body.dataset.tripStatus !== 'help' || !where) return
+      const title = $('b', where)
+      const stay = $('#help-stay')
+      const STAY = "If it's safe where you are, stay put."
+      const offline = load().length > 0 || !navigator.onLine
+      // ponytail: 100 m or the fix's own accuracy, whichever is wider, counts as "near"
+      const near = delivered && (!latest || metres(latest, delivered) <= Math.max(100, latest.accuracy || 0))
+      stay.textContent = STAY
+      // Near the position we hold: show it, so they can see we have it.
+      $('#help-fix').textContent = delivered && near ? fixLine(delivered) : ''
+      if (offline) {
+        // Without signal we still hold their plan and return time, so the message is: stay put, we'll come.
+        title.textContent = 'No signal right now.'
+        status.textContent = `We have your trip plan, and you're due back at ${where.dataset.back}.`
+        stay.textContent = `${STAY} If we still can't reach you by ${where.dataset.back}, we'll come and find you.`
+      } else if (delivered && near) {
+        title.textContent = 'We know where you are.'
+        status.textContent = 'Last position ' + hhmm(delivered.at)
+        stay.textContent = STAY + ' We know where you are.'
+      } else if (noFix && !delivered) {
+        title.textContent = "We can't get your location."
+        const tel = document.createElement('a')
+        tel.href = 'tel:' + where.dataset.emergency
+        tel.textContent = where.dataset.emergencyLabel
+        status.replaceChildren('Phone SARZA on ', tel, ' and tell them where you are.')
+      } else {
+        title.textContent = 'Finding your location…'
+        status.textContent = ''
+      }
+    }
+    addEventListener('offline', show)
     function ping() {
       navigator.geolocation?.getCurrentPosition(
         async (p) => {
           const c = p.coords
-          const fix = { lat: c.latitude, lng: c.longitude, accuracy: c.accuracy, altitude: c.altitude, altitude_accuracy: c.altitudeAccuracy, battery: await battery(), at: p.timestamp || Date.now() }
+          // Signal at the moment of the fix: offline, the connection type where the browser says (Android), or just online.
+          const signal = !navigator.onLine ? 'none' : navigator.connection?.effectiveType || 'online'
+          const fix = { lat: c.latitude, lng: c.longitude, accuracy: c.accuracy, altitude: c.altitude, altitude_accuracy: c.altitudeAccuracy, battery: await battery(), signal, at: p.timestamp || Date.now() }
+          noFix = false
+          latest = fix
           const q = load()
           q.push(fix)
           // ponytail: keeps the newest 500 (about 16 h at one fix every 2 min); thin the old ones if trips run longer
           save(q.slice(-500))
           flush()
         },
-        () => {},
+        () => { noFix = true; show() },
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 },
       )
     }
@@ -305,21 +442,62 @@
     const intervalId = setInterval(ping, every)
     flush()
 
+    // A call for help stays on the phone until the server confirms it, so no signal, a locked screen or a closed app
+    // doesn't lose it. Only the server's answer leads to the "SARZA has been alerted" screen.
     const slider = $('[data-help-slider] input')
-    if (slider) {
-      dragOnly(slider, async () => {
-        slider.disabled = true
-        status.textContent = 'Reaching SARZA…'
-        for (;;) {
-          try {
-            const r = await fetch(`/api/trips/${tripId}/help`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: '{}' })
-            if (r.ok) { location.href = '/trip'; return }
-          } catch {}
-          status.textContent = 'Still trying to reach SARZA. Phone ' + body.dataset.emergency + ' if you can.'
-          await new Promise((r) => setTimeout(r, 5000))
+    const pending = $('#help-pending')
+    const helpKey = 'help:' + tripId
+    let helpWanted = false
+    const isPending = () => { if (helpWanted) return true; try { return !!localStorage.getItem(helpKey) } catch { return false } }
+    const dropHelp = () => { helpWanted = false; try { localStorage.removeItem(helpKey) } catch {} }
+    // The server has it: a leftover must not resend after "Cancel, I'm fine" brings the trip screen back.
+    if (body.dataset.tripStatus === 'help') dropHelp()
+    let sendingHelp = false
+    async function sendHelp() {
+      if (!pending) return
+      helpWanted = true
+      try { localStorage.setItem(helpKey, String(Date.now())) } catch {}
+      body.classList.add('help-pending')
+      pending.hidden = false
+      scrollTo(0, 0)
+      if (sendingHelp) return
+      sendingHelp = true
+      const title = $('[data-pending-title]', pending), sub = $('[data-pending-sub]', pending)
+      const sms = $('[data-help-sms]', pending)
+      let number = ''
+      try { number = localStorage.getItem('sms') || '' } catch {}
+      while (isPending()) {
+        try {
+          const r = await fetch(`/api/trips/${tripId}/help`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: '{}' })
+          // 4xx (trip already ended, say) won't get better by retrying: let the server's page explain.
+          if (r.ok || (r.status >= 400 && r.status < 500)) { dropHelp(); location.href = '/trip'; return }
+        } catch {}
+        title.textContent = "We haven't reached SARZA yet."
+        sub.textContent = "We'll keep trying, and send it the moment you have signal."
+        if (number) {
+          const fix = latest || delivered
+          const text = pending.dataset.smsText + (fix ? ` Position ${fix.lat.toFixed(5)}, ${fix.lng.toFixed(5)}.` : '')
+          sms.href = `sms:${number}?&body=${encodeURIComponent(text)}`
+          sms.hidden = false
         }
-      })
+        await new Promise((r) => { const t = setTimeout(r, 5000); addEventListener('online', () => { clearTimeout(t); r() }, { once: true }) })
+      }
+      sendingHelp = false
+    }
+    if (slider) {
+      dragOnly(slider, sendHelp)
       slider.value = 0
+      const undo = pending && $('[data-help-undo]', pending)
+      // Works offline: no reload, just back to the trip screen. A request already in flight may still land,
+      // and then the alert screen, with its own cancel, is the truth.
+      if (undo) undo.addEventListener('click', () => {
+        dropHelp()
+        body.classList.remove('help-pending')
+        pending.hidden = true
+        slider.value = 0
+        slider.disabled = false
+      })
+      if (isPending()) sendHelp()
     }
   }
 
@@ -332,37 +510,142 @@
     const text = $('textarea', chatForm)
     const time = (ms) => new Date(ms).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', hour12: false })
     // Names and bodies are user input: textContent only.
+    function media(m) {
+      if (!m.media_type) return []
+      const src = `${url}/${m.id}/media`
+      if (m.media_type.startsWith('audio/')) {
+        const a = document.createElement('audio')
+        a.className = 'media'
+        a.controls = true
+        a.preload = 'none'
+        a.src = src
+        return [a]
+      }
+      const link = document.createElement('a')
+      link.className = 'media'
+      link.href = src
+      link.target = '_blank'
+      const img = document.createElement('img')
+      img.src = src
+      img.alt = 'Photo'
+      img.loading = 'lazy'
+      link.append(img)
+      return [link]
+    }
     function render(msgs) {
+      // Follow the newest message, unless they've scrolled up to read and nothing new came in.
+      const follow = msgs.length > list.children.length || list.scrollHeight - list.scrollTop - list.clientHeight < 40
+      // A new message from the other side while the screen is open: buzz (Android), since no push banner may show.
+      const mine = chat.dataset.me
+      if (list.children.length && msgs.length > list.children.length && msgs.slice(list.children.length).some((m) => m.author_role !== mine)) navigator.vibrate?.([120, 80, 120])
       list.replaceChildren(...msgs.map((m) => {
         const li = document.createElement('li')
         li.className = 'msg ' + m.author_role
         const who = document.createElement('div')
         who.className = 'who2'
         const small = document.createElement('small')
-        small.textContent = `${m.author_name} · ${time(m.created_at)}`
+        const n = document.createElement('span')
+        n.className = 'n'
+        n.textContent = `${m.author_name} · `
+        small.append(n, time(m.created_at))
         const span = document.createElement('span')
         span.textContent = m.body
-        who.append(small, span)
+        who.append(small, span, ...media(m))
         li.append(who)
         return li
       }))
+      if (follow) list.scrollTop = list.scrollHeight
+      // photos arrive after layout; keep the newest in view as they load
+      if (follow) $$('img', list).forEach((i) => i.addEventListener('load', () => { list.scrollTop = list.scrollHeight }, { once: true }))
     }
     async function poll() {
       if (document.hidden) return
       try { const r = await fetch(url, { headers: { accept: 'application/json' } }); if (r.ok) render((await r.json()).messages) } catch {}
     }
-    setInterval(poll, 15000)
+    list.scrollTop = list.scrollHeight
+    // On the alert screen replies matter most: check every 5 seconds, not 15.
+    setInterval(poll, $('main.help-screen') ? 5000 : 15000)
     document.addEventListener('visibilitychange', poll)
+
+    // One way out for text, photos and voice notes. Returns true once the server has it.
+    async function send(payload) {
+      chatForm.setAttribute('aria-busy', 'true')
+      try {
+        const r = payload instanceof FormData
+          ? await fetch(url, { method: 'POST', headers: { accept: 'application/json' }, body: payload })
+          : await fetch(url, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+        const j = await r.json().catch(() => ({}))
+        if (r.ok) { render(j.messages); return true }
+        alert(j.error || 'Not sent. Try again.')
+      } catch { alert('Not sent. Check your signal and try again.') } finally { chatForm.removeAttribute('aria-busy') }
+      return false
+    }
+    const sendFile = (file) => { const fd = new FormData(); fd.append('media', file); return send(fd) }
+
+    // Enter sends, Shift+Enter starts a new line.
+    text.enterKeyHint = 'send'
+    text.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (text.value.trim()) chatForm.requestSubmit() }
+    })
     chatForm.addEventListener('submit', async (e) => {
       e.preventDefault()
-      const btn = $('button', chatForm)
-      btn.disabled = true
-      try {
-        const r = await fetch(url, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ body: text.value }) })
-        const j = await r.json().catch(() => ({}))
-        if (r.ok) { render(j.messages); text.value = '' } else alert(j.error || 'Not sent. Try again.')
-      } catch { alert('Not sent. Check your signal and try again.') } finally { btn.disabled = false }
+      if (text.value.trim() && (await send({ body: text.value }))) text.value = ''
     })
+
+    // Photos go out as soon as they're picked, shrunk to 1600 px so they get through on a weak signal.
+    const photo = $('input[type=file]', chatForm)
+    photo.addEventListener('change', async () => {
+      const file = photo.files[0]
+      photo.value = ''
+      if (file) await sendFile(await shrink(file))
+    })
+    async function shrink(file) {
+      try {
+        const bmp = await createImageBitmap(file)
+        const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height))
+        const c = document.createElement('canvas')
+        c.width = Math.round(bmp.width * k)
+        c.height = Math.round(bmp.height * k)
+        c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height)
+        const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.8))
+        return blob ? new File([blob], 'photo.jpg', { type: 'image/jpeg' }) : file
+      } catch { return file }
+    }
+
+    // Voice note: tap the mic to record, tap again to send. Safari gives audio/mp4, Chrome audio/webm.
+    const mic = $('[data-voice]', chatForm)
+    if (mic && window.MediaRecorder && navigator.mediaDevices) {
+      mic.hidden = false
+      const hint = text.placeholder
+      let recorder = null
+      let tick = null
+      mic.addEventListener('click', async () => {
+        if (recorder) { recorder.stop(); return }
+        let stream
+        try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) } catch { alert('Allow the microphone to send a voice note.'); return }
+        const chunks = []
+        const r = recorder = new MediaRecorder(stream, { audioBitsPerSecond: 64000 })
+        r.ondataavailable = (e) => chunks.push(e.data)
+        r.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop())
+          clearInterval(tick)
+          recorder = null
+          mic.classList.remove('rec')
+          text.placeholder = hint
+          const type = (r.mimeType || chunks[0]?.type || 'audio/webm').split(';')[0]
+          const file = new File(chunks, 'voice.' + type.split('/')[1], { type })
+          if (file.size) await sendFile(file)
+        }
+        r.start()
+        mic.classList.add('rec')
+        const started = Date.now()
+        const show = () => { const s = Math.floor((Date.now() - started) / 1000); text.placeholder = `Recording ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}. Tap to send` }
+        show()
+        tick = setInterval(show, 500)
+        // ponytail: two minutes at 64 kbit/s stays under the server's 2 MB cap
+        setTimeout(() => r.state === 'recording' && r.stop(), 120000)
+      })
+    }
   }
 
   // ---------- end of trip: share ----------

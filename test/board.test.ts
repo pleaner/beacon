@@ -198,3 +198,53 @@ describe('POST /api/board/trips/:id/close', () => {
     expect(res.status).toBe(403)
   })
 })
+
+describe('admin changes a trip status', () => {
+  const set = (id: string, cookie: string, status: string) =>
+    exports.default.fetch(`${BASE}/api/admin/trips/${id}/status`, {
+      method: 'POST', redirect: 'manual', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ status }),
+    })
+
+  it('moves a trip through every state, with the timestamps each state expects', async () => {
+    const a = cookieFor((await makeAdmin()).token)
+    const e = await makeExplorer()
+    const t = await startTrip(env.DB, e.user.id, { ...base, return_by: Date.now() + 3_600_000 }, Date.now())
+
+    let res = await set(t.id, a, 'overdue')
+    expect(res.headers.get('location')).toBe(`/board/trips/${t.id}?saved=1`)
+    let now = (await getTrip(env.DB, t.id))!
+    expect([now.status, now.prompted_at != null]).toEqual(['overdue', true])
+
+    await set(t.id, a, 'help')
+    now = (await getTrip(env.DB, t.id))!
+    expect([now.status, now.help_alerted_at]).toEqual(['help', null])
+
+    await set(t.id, a, 'closed')
+    now = (await getTrip(env.DB, t.id))!
+    expect([now.status, now.closed_reason, now.closed_at != null]).toEqual(['closed', 'operator_closed', true])
+
+    await set(t.id, a, 'active')
+    now = (await getTrip(env.DB, t.id))!
+    expect([now.status, now.closed_at, now.closed_reason, now.prompted_at]).toEqual(['active', null, null, null])
+
+    expect((await set(t.id, a, 'lost')).status).toBe(400)
+  })
+
+  it('will not reopen a trip while the explorer has another open one, and is for admins only', async () => {
+    const a = cookieFor((await makeAdmin()).token)
+    const o = cookieFor((await makeOperator()).token)
+    const e = await makeExplorer()
+    const old = await startTrip(env.DB, e.user.id, { ...base, return_by: Date.now() + 3_600_000 }, Date.now())
+    await set(old.id, a, 'closed')
+    await startTrip(env.DB, e.user.id, { ...base, return_by: Date.now() + 3_600_000 }, Date.now())
+
+    const res = await set(old.id, a, 'active')
+    expect(res.headers.get('location')).toContain(`/board/trips/${old.id}?error=`)
+    expect((await getTrip(env.DB, old.id))!.status).toBe('closed')
+
+    expect((await set(old.id, o, 'active')).status).toBe(403)
+    const page = (cookie: string) => exports.default.fetch(`${BASE}/board/trips/${old.id}`, { headers: { cookie } }).then((r) => r.text())
+    expect(await page(a)).toContain('Trip status')
+    expect(await page(o)).not.toContain('Trip status')
+  })
+})

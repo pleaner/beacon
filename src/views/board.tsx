@@ -1,8 +1,8 @@
 import type { FC } from 'hono/jsx'
 import { ACTIVITIES, LANGUAGES } from '../lib/constants'
-import { MAX_MESSAGE, type Message, type Position, type User } from '../lib/db'
+import { MAX_MESSAGE, signalLabel, type Message, type Position, type User } from '../lib/db'
 import { formatPhone } from '../lib/phone'
-import { tripLine, tripPlace, type Companion, type OpenTripRow, type Trip } from '../lib/trips'
+import { activityName, ADMIN_STATUSES, tripLine, tripPlace, type Companion, type OpenTripRow, type Trip } from '../lib/trips'
 import { Icon, type IconName } from './icons'
 
 export function ago(from: number, now: number): string {
@@ -152,19 +152,34 @@ export const EmergencyCard: FC<{ user: User }> = ({ user }) => (
 )
 
 // The trip's thread. public/app.js polls it and sends without a reload; without JS the form posts and comes back.
-export const Chat: FC<{ tripId: string; messages: Message[]; placeholder: string }> = ({ tripId, messages, placeholder }) => (
-  <section class="card chat" data-chat={tripId}>
+// A message's photo or voice note, fetched through the trip's chat route so only the explorer and operators get it.
+export const MessageMedia: FC<{ tripId: string; m: Message }> = ({ tripId, m }) => {
+  if (!m.media_type) return null
+  const src = `/api/trips/${tripId}/messages/${m.id}/media`
+  return m.media_type.startsWith('audio/')
+    ? <audio class="media" controls preload="none" src={src}></audio>
+    : <a class="media" href={src} target="_blank"><img src={src} alt="Photo" loading="lazy" /></a>
+}
+
+export const Chat: FC<{ tripId: string; messages: Message[]; placeholder: string; me: 'explorer' | 'operator' }> = ({ tripId, messages, placeholder, me }) => (
+  <section class="card chat" data-chat={tripId} data-me={me}>
     <h2>Messages</h2>
     <ul class="list" data-msgs>
       {messages.map((m) => (
         <li class={`msg ${m.author_role}`}>
-          <div class="who2"><small>{m.author_name} · {clock(m.created_at)}</small><span>{m.body}</span></div>
+          <div class="who2"><small><span class="n">{m.author_name} · </span>{clock(m.created_at)}</small><span>{m.body}</span><MessageMedia tripId={tripId} m={m} /></div>
         </li>
       ))}
     </ul>
-    <form method="post" action={`/api/trips/${tripId}/messages`} class="stack" style="gap: 8px;">
-      <textarea name="body" maxlength={MAX_MESSAGE} required rows={2} aria-label="Message" placeholder={placeholder}></textarea>
-      <button class="btn" type="submit">Send</button>
+    {/* Photo and voice buttons send straight away (app.js); without JS the photo posts with the form. */}
+    <form method="post" action={`/api/trips/${tripId}/messages`} enctype="multipart/form-data" class="compose">
+      <label class="icon-btn" title="Send a photo">
+        <Icon name="camera" /><span class="sr">Send a photo</span>
+        <input type="file" name="media" accept="image/*" hidden />
+      </label>
+      <textarea name="body" maxlength={MAX_MESSAGE} rows={2} aria-label="Message" placeholder={placeholder}></textarea>
+      <button class="icon-btn mic" type="button" data-voice hidden title="Record a voice note"><Icon name="mic" /><span class="sr">Record a voice note</span></button>
+      <button class="btn send" type="submit">Send</button>
     </form>
   </section>
 )
@@ -177,6 +192,7 @@ const PositionRow: FC<{ p: Position; now: number }> = ({ p, now }) => (
       <small>
         {ago(p.at, now)}{p.accuracy != null ? ` · ±${Math.round(p.accuracy)} m` : ''}
         {p.altitude != null ? ` · ${Math.round(p.altitude)} m up` : ''}{p.battery != null ? ` · ${p.battery}%` : ''}
+        {p.signal ? ` · ${signalLabel(p.signal)}` : ''}
         {p.received_at != null && p.received_at - p.at > 5 * 60_000 ? ` · arrived ${ago(p.received_at, now)}` : ''}
       </small>
     </div>
@@ -184,7 +200,10 @@ const PositionRow: FC<{ p: Position; now: number }> = ({ p, now }) => (
   </li>
 )
 
-export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; companions: Companion[]; messages: Message[]; now: number }> = ({ trip, user, positions, companions, messages, now }) => {
+export const TripDetail: FC<{
+  trip: Trip; user: User; positions: Position[]; companions: Companion[]; messages: Message[]; now: number
+  admin?: boolean; saved?: boolean; error?: string
+}> = ({ trip, user, positions, companions, messages, now, admin, saved, error }) => {
   const last = positions[0]
   const checklist = JSON.parse(trip.checklist_json) as string[]
   const first = user.name.split(' ')[0]
@@ -203,6 +222,8 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
         <h1 class="display">{user.name}</h1>
         <p class="row" style="margin: 0;"><Icon name={ICON[trip.activity] ?? 'other'} size={18} />{tripLine(trip)} · back by {fmt(trip.return_by)}</p>
       </div>
+      {saved && <div class="banner ok" role="status">Trip status saved.</div>}
+      {error && <div class="banner error" role="alert">{error}</div>}
       <div class="stack" style="gap: 8px;">
         <a class="btn red" href={`tel:${user.phone}`}><Icon name="phone" />Phone {first} {formatPhone(user.phone)}</a>
         {user.emergency_phone && (
@@ -234,7 +255,7 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
         )}
       </section>
 
-      <Chat tripId={trip.id} messages={messages} placeholder={`Message ${first}`} />
+      <Chat tripId={trip.id} messages={messages} placeholder={`Message ${first}`} me="operator" />
 
       <section class="card">
         <h2>Plan</h2>
@@ -257,8 +278,8 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
           <ul class="list">
             {companions.map((p) => (
               <li>
-                <span class="avatar soft">{initials(p.name)}</span>
-                <div class="who2"><strong>{p.name}</strong><small>{p.phone ? formatPhone(p.phone) : 'No number given'}</small></div>
+                <span class="avatar soft">{p.kind === 'pet' ? <Icon name="paw" size={20} /> : initials(p.name)}</span>
+                <div class="who2"><strong>{p.name}</strong><small>{p.kind === 'pet' ? 'Pet' : p.phone ? formatPhone(p.phone) : 'No number given'}</small></div>
                 {p.phone && <a class="outline-btn" href={`tel:${p.phone}`} aria-label={`Phone ${p.name}`}><Icon name="phone" size={20} /></a>}
               </li>
             ))}
@@ -279,6 +300,19 @@ export const TripDetail: FC<{ trip: Trip; user: User; positions: Position[]; com
 
       <PersonCard user={user} now={now} />
       <EmergencyCard user={user} />
+
+      {admin && (
+        <section class="card">
+          <h2>Trip status</h2>
+          <p class="muted" style="margin: 0; font-size: 14px;">Admins only. The trip carries on from the new state: Overdue pushes operators after the grace period, Help pushes them within a minute.</p>
+          <form method="post" action={`/api/admin/trips/${trip.id}/status`} class="row" style="gap: 8px;" onsubmit="return confirm('Change this trip\'s status?')">
+            <select name="status" aria-label="Trip status" class="grow">
+              {ADMIN_STATUSES.map((st) => <option value={st} selected={st === trip.status}>{st[0]!.toUpperCase() + st.slice(1)}</option>)}
+            </select>
+            <button class="btn small" type="submit">Save</button>
+          </form>
+        </section>
+      )}
 
       {trip.status !== 'closed' && (
         <section class="card">
@@ -307,7 +341,7 @@ export const Brief: FC<{ trip: Trip; user: User; positions: Position[]; companio
     .filter(([k]) => k)
   const rows: Array<[string, string | null]> = [
     ['Status', trip.status],
-    ['Activity', ACTIVITIES[trip.activity] ?? trip.activity],
+    ['Activity', activityName(trip)],
     ['Phone', formatPhone(user.phone)],
     ['Started', when(trip.start_at)],
     ['Start point', [place, start].filter(Boolean).join(' · ') || null],
@@ -316,7 +350,7 @@ export const Brief: FC<{ trip: Trip; user: User; positions: Position[]; companio
     ['Back by', when(trip.return_by)],
     ['Wearing', trip.wearing_text],
     ['With them', companions.length
-      ? companions.map((p) => (p.phone ? `${p.name} ${formatPhone(p.phone)}` : p.name)).join(', ')
+      ? companions.map((p) => (p.kind === 'pet' ? `${p.name} (pet)` : p.phone ? `${p.name} ${formatPhone(p.phone)}` : p.name)).join(', ')
       : trip.companions_text ?? 'Alone'],
     ['Battery at start', trip.battery_at_start != null ? `${trip.battery_at_start}%` : null],
     ['Checklist', checklist.length ? checklist.join(', ') : null],
@@ -353,7 +387,7 @@ export const Brief: FC<{ trip: Trip; user: User; positions: Position[]; companio
         <p class="muted" style="margin: 0; font-size: 14px;">Newest first. Positions only arrive while their app is open on screen.</p>
         {positions.length === 0 ? <p class="muted" style="margin: 0;">None received.</p> : (
           <table class="brief-pos">
-            <thead><tr><th>Time</th><th>Lat, lng</th><th>±</th><th>Alt</th><th>Batt</th></tr></thead>
+            <thead><tr><th>Time</th><th>Lat, lng</th><th>±</th><th>Alt</th><th>Batt</th><th>Signal</th></tr></thead>
             <tbody>
               {positions.map((p) => (
                 <tr>
@@ -362,6 +396,7 @@ export const Brief: FC<{ trip: Trip; user: User; positions: Position[]; companio
                   <td>{p.accuracy != null ? `${Math.round(p.accuracy)} m` : ''}</td>
                   <td>{p.altitude != null ? `${Math.round(p.altitude)} m` : ''}</td>
                   <td>{p.battery != null ? `${p.battery}%` : ''}</td>
+                  <td>{signalLabel(p.signal) ?? ''}</td>
                 </tr>
               ))}
             </tbody>

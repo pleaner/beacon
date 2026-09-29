@@ -4,13 +4,13 @@ import { setCookie } from 'hono/cookie'
 import type { AppEnv } from '../env'
 import { COOKIE_MAX_AGE, COOKIE_NAME, hashToken, newToken } from '../lib/auth'
 import { ACTIVITIES, AREAS, BLOOD_TYPES, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity, type Area } from '../lib/constants'
-import { addMessage, addSubscription, createUser, insertPositions, listMessages, MAX_MESSAGE, updateUser } from '../lib/db'
+import { addMessage, addSubscription, createUser, getMessageMedia, insertPositions, listMessages, MAX_MESSAGE, SIGNALS, updateUser } from '../lib/db'
 import { done, num, readBody, requireApiRole, str, wantsJson, type Body } from '../lib/middleware'
 import { normalizePhone } from '../lib/phone'
 import { getPlaceLookup } from '../lib/places'
-import { savePhoto } from '../lib/photos'
+import { saveMessageMedia, savePhoto } from '../lib/photos'
 import { getSender, helpPayload, pushToRoles, pushToUser } from '../lib/push'
-import { cancelHelp, extendTrip, getTrip, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
+import { adminSetStatus, ADMIN_STATUSES, cancelHelp, extendTrip, getTrip, listPets, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setPets, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
 import { newTripPage, profilePage } from './explorer'
 
 export const api = new Hono<AppEnv>()
@@ -109,25 +109,31 @@ const readChecklist = (raw: unknown) =>
 
 // Companions arrive as parallel form fields (companion_name, companion_phone, companion_phone_country)
 // or as a JSON array of { name, phone }.
-function readCompanions(body: Body): Array<{ name: string; phone: string | null }> {
-  if (str(body, 'company') === 'alone') return []
+// Pets come as pet_name fields or { name, kind: 'pet' }, and count even when going "alone".
+type CompanionIn = { name: string; phone: string | null; kind: 'person' | 'pet' }
+function readCompanions(body: Body): CompanionIn[] {
+  const alone = str(body, 'company') === 'alone'
   const raw = body.companions as unknown
+  let all: CompanionIn[]
   if (Array.isArray(raw)) {
-    return raw
-      .filter((x): x is { name: unknown; phone?: unknown } => !!x && typeof x === 'object')
-      .map((x) => ({ name: String(x.name ?? '').trim().slice(0, 80), phone: typeof x.phone === 'string' ? normalizePhone(x.phone) : null }))
-      .filter((x) => x.name)
+    all = raw
+      .filter((x): x is { name: unknown; phone?: unknown; kind?: unknown } => !!x && typeof x === 'object')
+      .map((x) => x.kind === 'pet'
+        ? { name: String(x.name ?? '').trim().slice(0, 80), phone: null, kind: 'pet' as const }
+        : { name: String(x.name ?? '').trim().slice(0, 80), phone: typeof x.phone === 'string' ? normalizePhone(x.phone) : null, kind: 'person' as const })
+  } else {
+    const list = (k: string) => {
+      const v = body[k] as unknown
+      return Array.isArray(v) ? v.map((x) => (typeof x === 'string' ? x : '')) : typeof v === 'string' ? [v] : []
+    }
+    const phones = list('companion_phone')
+    const codes = list('companion_phone_country')
+    all = [
+      ...list('companion_name').map((n, i) => ({ name: n.trim().slice(0, 80), phone: normalizePhone(phones[i] ?? null, codes[i] ?? '27'), kind: 'person' as const })),
+      ...list('pet_name').map((n) => ({ name: n.trim().slice(0, 80), phone: null, kind: 'pet' as const })),
+    ]
   }
-  const list = (k: string) => {
-    const v = body[k] as unknown
-    return Array.isArray(v) ? v.map((x) => (typeof x === 'string' ? x : '')) : typeof v === 'string' ? [v] : []
-  }
-  const names = list('companion_name')
-  const phones = list('companion_phone')
-  const codes = list('companion_phone_country')
-  return names
-    .map((n, i) => ({ name: n.trim().slice(0, 80), phone: normalizePhone(phones[i] ?? null, codes[i] ?? '27') }))
-    .filter((x) => x.name)
+  return all.filter((x) => x.name && !(alone && x.kind === 'person'))
 }
 
 api.post('/trips', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
@@ -138,12 +144,13 @@ api.post('/trips', requireApiRole('explorer', 'operator', 'admin'), async (c) =>
   const area = str(body, 'area') as Area | null
   const rawReturn = body.return_by as unknown
   const return_by = parseReturnBy(typeof rawReturn === 'number' ? rawReturn : str(body, 'return_by'), now)
-  const fail = async (error: string, status: 400 | 409, errorAt: 'intro' | 'when' | 'photos' = 'photos') => {
+  const fail = async (error: string, status: 400 | 409, errorAt: 'intro' | 'where' | 'when' | 'photos' = 'photos') => {
     if (wantsJson(c)) return c.json({ error }, status)
     const act = activity && activity in ACTIVITIES ? activity : 'hike'
     const raw = body.checklist as unknown
     const draft = {
       destination_text: str(body, 'destination_text'),
+      activity_text: str(body, 'activity_text'),
       route_text: str(body, 'route_text'),
       return_by: str(body, 'return_by'),
       checklist: readChecklist(raw),
@@ -154,6 +161,10 @@ api.post('/trips', requireApiRole('explorer', 'operator', 'admin'), async (c) =>
   }
   if (!activity || !(activity in ACTIVITIES)) return fail('Pick an activity', 400, 'intro')
   if (area && !(area in AREAS)) return fail('Unknown area', 400, 'intro')
+  const activity_text = str(body, 'activity_text')?.slice(0, 60) ?? null
+  if (activity === 'other' && !activity_text) return fail('Tell us what you\'re doing', 400, 'where')
+  if (!str(body, 'destination_text') || !str(body, 'route_text')) return fail('Tell us where you\'re headed and your route', 400, 'where')
+  if (num(body, 'start_lat') == null || num(body, 'start_lng') == null) return fail('We need your location. Turn on location for this site and try again.', 400, 'where')
   if (!return_by) return fail('"Back by" must be a time in the future', 400, 'when')
 
   const raw = body.checklist as unknown
@@ -175,7 +186,7 @@ api.post('/trips', requireApiRole('explorer', 'operator', 'admin'), async (c) =>
 
   try {
     const trip = await startTrip(c.env.DB, user.id, {
-      activity, area: area ?? 'other', destination_text: str(body, 'destination_text'),
+      activity, area: area ?? 'other', activity_text, destination_text: str(body, 'destination_text'),
       route_text: str(body, 'route_text'), companions_text: str(body, 'companions_text'), wearing_text: str(body, 'wearing_text'),
       photo_key, shoe_photo_key, gear_photo_key, companions: readCompanions(body),
       start_lat: num(body, 'start_lat'), start_lng: num(body, 'start_lng'), start_accuracy: num(body, 'start_accuracy'),
@@ -232,6 +243,15 @@ api.post('/trips/:id/back', requireApiRole('explorer', 'operator', 'admin'), asy
   return done(c, { ok: true }, `/trips/${trip.id}/done`)
 })
 
+// "My pets": the form sends the whole list, which replaces what's saved.
+api.post('/pets', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
+  const b = await readBody(c)
+  const raw = (b as Record<string, unknown>).pet_name ?? (b as Record<string, unknown>).pets
+  const names = (Array.isArray(raw) ? raw : raw == null ? [] : [raw]).filter((n): n is string => typeof n === 'string')
+  await setPets(c.env.DB, c.var.user!.id, names, Date.now())
+  return done(c, { pets: await listPets(c.env.DB, c.var.user!.id) }, '/pets?saved=1')
+})
+
 api.post('/trips/:id/help', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const user = c.var.user!
   const trip = await ownTrip(c, c.req.param('id'))
@@ -275,6 +295,7 @@ api.post('/trips/:id/positions', requireApiRole('explorer', 'operator', 'admin')
       battery: battery == null ? null : Math.round(battery),
       altitude: opt(p.altitude),
       altitude_accuracy: opt(p.altitude_accuracy),
+      signal: (SIGNALS as readonly unknown[]).includes(p.signal) ? (p.signal as string) : null,
     })
   }
   const saved = await insertPositions(c.env.DB, rows)
@@ -287,6 +308,16 @@ async function chatTrip(c: Context<AppEnv>): Promise<Trip | null> {
   return trip && (c.var.user!.role !== 'explorer' || trip.user_id === c.var.user!.id) ? trip : null
 }
 
+api.get('/trips/:id/messages/:mid/media', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
+  const trip = await chatTrip(c)
+  const row = trip && (await getMessageMedia(c.env.DB, trip.id, Number(c.req.param('mid'))))
+  const obj = row && (await c.env.PHOTOS.get(row.media_key))
+  if (!obj) return c.text('Not found', 404)
+  return new Response(obj.body, {
+    headers: { 'content-type': row.media_type, 'cache-control': 'private, max-age=86400', 'x-content-type-options': 'nosniff' },
+  })
+})
+
 api.get('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const trip = await chatTrip(c)
   if (!trip) return c.json({ error: 'Not found' }, 404)
@@ -298,17 +329,26 @@ api.post('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'),
   const trip = await chatTrip(c)
   if (!trip) return c.json({ error: 'Not found' }, 404)
   if (trip.status === 'closed') return c.json({ error: 'Trip is closed' }, 409)
-  const raw = (await readBody(c)).body
-  const text = typeof raw === 'string' ? raw.trim() : ''
-  if (!text || text.length > MAX_MESSAGE) return c.json({ error: `Write 1 to ${MAX_MESSAGE} characters` }, 400)
-  await addMessage(c.env.DB, trip.id, user, text)
-  const short = text.length > 120 ? text.slice(0, 119) + '…' : text
+  const b = await readBody(c)
+  const text = typeof b.body === 'string' ? b.body.trim() : ''
+  if (text.length > MAX_MESSAGE) return c.json({ error: `Write up to ${MAX_MESSAGE} characters` }, 400)
+  let media: { key: string; type: string } | null = null
+  try {
+    media = await saveMessageMedia(c.env.PHOTOS, trip.id, b.media)
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400)
+  }
+  if (!text && !media) return c.json({ error: `Write 1 to ${MAX_MESSAGE} characters` }, 400)
+  await addMessage(c.env.DB, trip.id, user, text, media ?? undefined)
+  const said = text || (media!.type.startsWith('audio/') ? 'Voice note' : 'Photo')
+  const short = said.length > 120 ? said.slice(0, 119) + '…' : said
   const tag = `chat-${trip.id}`
   const send = getSender(c.env)
   c.executionCtx.waitUntil(
-    user.role === 'explorer'
+    (user.role === 'explorer'
       ? pushToRoles(c.env.DB, send, ['operator', 'admin'], { title: `Message from ${user.name}`, body: short, url: `/board/trips/${trip.id}`, tag })
-      : pushToUser(c.env.DB, send, trip.user_id, { title: `SARZA: ${user.name}`, body: short, url: '/trip', tag }),
+      : pushToUser(c.env.DB, send, trip.user_id, { title: `SARZA: ${user.name}`, body: short, url: '/trip', tag })
+    ).then((r) => { if (!r.sent) console.warn('message notification reached no one', trip.id, user.role === 'explorer' ? 'to operators' : 'to explorer') }),
   )
   return done(c, { messages: await listMessages(c.env.DB, trip.id) }, user.role === 'explorer' ? '/trip' : `/board/trips/${trip.id}`)
 })
@@ -316,6 +356,21 @@ api.post('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'),
 api.post('/board/trips/:id/close', requireApiRole('operator', 'admin'), async (c) => {
   if (!(await operatorClose(c.env.DB, c.req.param('id'), Date.now()))) return c.json({ error: 'Trip is already closed' }, 409)
   return done(c, { ok: true }, '/board')
+})
+
+api.post('/admin/trips/:id/status', requireApiRole('admin'), async (c) => {
+  const id = c.req.param('id')
+  const status = str(await readBody(c), 'status')
+  const back = `/board/trips/${id}`
+  if (!(ADMIN_STATUSES as readonly (string | null)[]).includes(status)) return c.json({ error: 'Pick active, overdue, help or closed' }, 400)
+  try {
+    if (!(await adminSetStatus(c.env.DB, id, status as (typeof ADMIN_STATUSES)[number], Date.now()))) return c.json({ error: 'Not found' }, 404)
+  } catch (e) {
+    if (!(e instanceof TripOpenError)) throw e
+    const error = 'This explorer already has another open trip. Close that one first.'
+    return wantsJson(c) ? c.json({ error }, 409) : c.redirect(`${back}?error=${encodeURIComponent(error)}`, 303)
+  }
+  return done(c, { ok: true }, `${back}?saved=1`)
 })
 
 api.post('/push/subscribe', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
