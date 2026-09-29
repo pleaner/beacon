@@ -32,7 +32,7 @@ explorer.get('/trip', requireRole('explorer', 'operator', 'admin'), async (c) =>
   const error = c.req.query('error')
   const messages = await listMessages(c.env.DB, trip.id)
   const sms = await getSetting(c.env.DB, 'sms_number', '')
-  const attrs = { 'data-trip-id': trip.id, 'data-trip-status': trip.status, 'data-vapid': c.env.VAPID_PUBLIC_KEY, 'data-emergency': c.env.EMERGENCY_PHONE, 'data-sms': sms }
+  const attrs = { 'data-trip-id': trip.id, 'data-trip-status': trip.status, 'data-vapid': c.env.VAPID_PUBLIC_KEY, 'data-sms': sms }
   if (trip.status === 'help') {
     const [lastFix] = await listPositions(c.env.DB, trip.id, 1)
     return c.html(
