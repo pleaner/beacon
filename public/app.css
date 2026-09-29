@@ -14,7 +14,6 @@ html, body { margin: 0; }
 body { font: 16px/1.45 var(--body); color: var(--ink); background: var(--ground); -webkit-text-size-adjust: 100%; }
 body.plain { background: var(--surface); }
 body.navy { background: var(--navy); }
-body.red { background: var(--red); }
 a { color: var(--navy); }
 img { max-width: 100%; }
 .icon { flex-shrink: 0; display: block; }
@@ -47,7 +46,6 @@ h2.label { margin: 0; font-family: var(--display); font-size: 20px; font-weight:
   font: 700 18px var(--body); text-decoration: none; cursor: pointer; background: var(--navy); color: #fff; }
 .btn.red { background: var(--red); }
 .btn.yellow { background: var(--yellow); color: var(--ink); }
-.btn.white { background: #fff; color: var(--red); }
 .btn.outline { background: #fff; color: var(--navy); border: 2px solid var(--navy); }
 .btn.ghost { background: transparent; color: var(--muted); font-weight: 600; font-size: 16px; min-height: 44px; }
 .btn.small { width: auto; min-height: 44px; font-size: 15px; border-radius: 10px; padding: 0 18px; }

@@ -114,7 +114,8 @@ describe('extend and back', () => {
   })
 
   it('extends by minutes via a form (the select path the view uses) and redirects', async () => {
-    const { t, cookie } = await live()
+    // due in 10 minutes, so +60 always lands later, even when both clocks read the same millisecond
+    const { t, cookie } = await live(10 * 60_000)
     const before = (await getTrip(env.DB, t.id))!.return_by
     const res = await call(`/api/trips/${t.id}/extend`, {
       cookie, method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ minutes: '60' }),
