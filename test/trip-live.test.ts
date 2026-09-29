@@ -2,9 +2,10 @@ import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { afterEach, describe, expect, it } from 'vitest'
 import worker from '../src/index'
-import { addSubscription, listPositions, listSubscriptionsForUser } from '../src/lib/db'
+import { addSubscription, insertPositions, listPositions, listSubscriptionsForUser } from '../src/lib/db'
 import { setSenderForTests } from '../src/lib/push'
-import { getTrip, markOverdue, startTrip, type NewTrip } from '../src/lib/trips'
+import { fitMap } from '../src/lib/map'
+import { getTrip, markOverdue, routeSummary, startTrip, type NewTrip } from '../src/lib/trips'
 import { cookieFor, fakeSender, makeExplorer, makeOperator } from './helpers'
 
 const BASE = 'https://beacon.test'
@@ -129,7 +130,7 @@ describe('extend and back', () => {
     const { t, cookie } = await live()
     const res = await call(`/api/trips/${t.id}/back`, { cookie, method: 'POST' })
     expect(res.status).toBe(303)
-    expect(res.headers.get('location')).toBe('/?back=1')
+    expect(res.headers.get('location')).toBe(`/trips/${t.id}/done`)
     expect((await getTrip(env.DB, t.id))!.closed_reason).toBe('safe')
     const again = await call(`/api/trips/${t.id}/back`, { cookie, ...json({}) })
     expect(again.status).toBe(409)
@@ -252,5 +253,58 @@ describe('push subscribe', () => {
     expect(bad.status).toBe(400)
     const anon = await call('/api/push/subscribe', json({ endpoint: 'https://push.test/x', keys: { p256dh: 'p', auth: 'a' } }))
     expect(anon.status).toBe(401)
+  })
+})
+
+describe('end of trip', () => {
+  it('shows the route card to the explorer once the trip is closed', async () => {
+    const { t, cookie } = await live()
+    const at = Date.now() - 60_000
+    await insertPositions(env.DB, [
+      { trip_id: t.id, lat: -33.95, lng: 18.41, accuracy: 5, battery: 90, altitude: 100, at: at - 20_000 },
+      { trip_id: t.id, lat: -33.96, lng: 18.42, accuracy: 5, battery: 89, altitude: 180, at: at - 10_000 },
+      { trip_id: t.id, lat: -33.97, lng: 18.41, accuracy: 5, battery: 88, altitude: 150, at },
+    ])
+    expect((await call(`/trips/${t.id}/done`, { cookie })).headers.get('location')).toBe('/')
+    await call(`/api/trips/${t.id}/back`, { cookie, method: 'POST' })
+    const html = await (await call(`/trips/${t.id}/done`, { cookie })).text()
+    expect(html).toContain('HIKE COMPLETE')
+    expect(html).toMatch(/<image href="data:image\/png;base64,[^"]+" x="110" y="50"/)
+    expect(html).toContain('>BY SARZA<')
+    expect(html).toContain('id="trip-card"')
+    expect(html).toContain('<polyline')
+    expect(html).toContain('80 m')
+    expect(html).toContain('data-share-card')
+    const other = await makeExplorer()
+    expect((await call(`/trips/${t.id}/done`, { cookie: cookieFor(other.token) })).headers.get('location')).toBe('/')
+  })
+
+  it('fits every point of the track inside the map box, with tiles covering the box', () => {
+    const tracks = [
+      [{ lat: -33.9447, lng: 18.3978 }, { lat: -33.9352, lng: 18.389 }, { lat: -33.94, lng: 18.38 }], // Lion's Head
+      [{ lat: -33.95, lng: 18.2 }, { lat: -33.96, lng: 18.9 }], // 65 km east-west
+      [{ lat: -32.5, lng: 19.1 }, { lat: -34.2, lng: 19.12 }], // 190 km north-south
+      [{ lat: -33.95, lng: 18.41 }, { lat: -33.9501, lng: 18.4101 }], // barely moved
+    ]
+    for (const track of tracks) {
+      const fit = fitMap(track, 0, 300, 1080, 1060)
+      for (const [x, y] of track.map(fit.project)) {
+        expect(x).toBeGreaterThanOrEqual(70); expect(x).toBeLessThanOrEqual(1010)
+        expect(y).toBeGreaterThanOrEqual(370); expect(y).toBeLessThanOrEqual(1290)
+      }
+      expect(Math.min(...fit.tiles.map((t) => t.left))).toBeLessThanOrEqual(0)
+      expect(Math.max(...fit.tiles.map((t) => t.left)) + 512).toBeGreaterThanOrEqual(1080)
+      expect(Math.min(...fit.tiles.map((t) => t.top))).toBeLessThanOrEqual(300)
+      expect(Math.max(...fit.tiles.map((t) => t.top)) + 512).toBeGreaterThanOrEqual(1360)
+    }
+  })
+
+  it('sums distance and ignores altitude wobble under 5 m', () => {
+    const s = routeSummary([
+      { lat: 0, lng: 0, altitude: 100 }, { lat: 0, lng: 0.01, altitude: 103 }, { lat: 0, lng: 0.02, altitude: 99 },
+      { lat: 0, lng: 0.03, altitude: 120 }, { lat: 0, lng: 0.04, altitude: 110 }, { lat: 0, lng: 0.05, altitude: 130 },
+    ])
+    expect(Math.round(s.distance / 100) * 100).toBe(5600)
+    expect(s.climb).toBe(41)
   })
 })

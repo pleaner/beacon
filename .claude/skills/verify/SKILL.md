@@ -44,12 +44,6 @@ Slide-to-confirm (help, cancel a draft trip) ignores taps. `dragOnly` in `public
     for (let i = 1; i <= 20; i++) await page.mouse.move(box.x + 4 + (box.width - 8) * (i / 20), box.y + box.height / 2)
     await page.mouse.up()
 
-Headless Chromium has no microphone, so the voice note recorder on the "Where are you going?" step never starts. Hand it a generated stream first, and the real MediaRecorder code runs:
-
-    await page.evaluate(() => {
-      navigator.mediaDevices.getUserMedia = async () => { const ac = new AudioContext(); const o = ac.createOscillator(); const d = ac.createMediaStreamDestination(); o.connect(d); o.start(); return d.stream }
-    })
-
 The step buttons animate, so wait about 700 ms after each Next before reading the step.
 
 Playwright MCP only writes inside the repo, so screenshots go to `.playwright-mcp/` (untracked).

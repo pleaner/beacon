@@ -30,7 +30,6 @@ export interface Trip {
   destination_text: string | null
   start_place: string | null
   gear_photo_key: string | null
-  voice_note_key: string | null
 }
 
 export interface Companion {
@@ -46,7 +45,6 @@ export interface NewTrip {
   area?: Area
   destination_text?: string | null
   gear_photo_key?: string | null
-  voice_note_key?: string | null
   companions?: Array<{ name: string; phone: string | null }>
   route_text: string | null
   companions_text: string | null
@@ -77,12 +75,12 @@ export async function startTrip(db: DB, userId: string, t: NewTrip, now: number)
     .prepare(
       `INSERT INTO trips (id, user_id, activity, area, route_text, companions_text, wearing_text, photo_key,
         shoe_photo_key, start_lat, start_lng, start_accuracy, start_at, return_by, checklist_json,
-        battery_at_start, status, created_at, destination_text, gear_photo_key, voice_note_key)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?)`,
+        battery_at_start, status, created_at, destination_text, gear_photo_key)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?)`,
     )
     .bind(id, userId, t.activity, t.area ?? 'other', t.route_text, t.companions_text, t.wearing_text, t.photo_key,
       t.shoe_photo_key, t.start_lat, t.start_lng, t.start_accuracy, now, t.return_by,
-      JSON.stringify(t.checklist), t.battery_at_start, now, t.destination_text ?? null, t.gear_photo_key ?? null, t.voice_note_key ?? null)
+      JSON.stringify(t.checklist), t.battery_at_start, now, t.destination_text ?? null, t.gear_photo_key ?? null)
   const addCompanion = db.prepare('INSERT INTO companions (trip_id, name, phone, sort) VALUES (?,?,?,?)')
   const companions = (t.companions ?? []).slice(0, 30).map((c, i) => addCompanion.bind(id, c.name, c.phone, i))
   try {
@@ -261,4 +259,33 @@ export function tripPlace(t: Pick<Trip, 'start_place' | 'area'>): string | null 
 export function tripLine(t: Pick<Trip, 'activity' | 'start_place' | 'area'>): string {
   const place = tripPlace(t)
   return place ? `${ACTIVITIES[t.activity]} from ${place}` : ACTIVITIES[t.activity]
+}
+
+export interface RoutePoint { lat: number; lng: number; alt: number | null; dist: number }
+
+// The track in time order with running distance in metres, plus totals for the end-of-trip card.
+export function routeSummary(points: Array<{ lat: number; lng: number; altitude?: number | null }>) {
+  const route: RoutePoint[] = []
+  let dist = 0
+  let climb = 0
+  let ref: number | null = null
+  for (const p of points) {
+    const prev = route[route.length - 1]
+    if (prev) dist += metresBetween(prev, p)
+    const alt = p.altitude ?? null
+    route.push({ lat: p.lat, lng: p.lng, alt, dist })
+    // GPS altitude wobbles by metres, so only count a rise once it clears 5 m from the last low point.
+    if (alt == null) continue
+    if (ref == null || alt < ref) ref = alt
+    else if (alt - ref >= 5) { climb += alt - ref; ref = alt }
+  }
+  return { route, distance: dist, climb: Math.round(climb) }
+}
+
+function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const rad = Math.PI / 180
+  const dLat = (b.lat - a.lat) * rad
+  const dLng = (b.lng - a.lng) * rad
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2
+  return 2 * 6371000 * Math.asin(Math.sqrt(h))
 }

@@ -17,7 +17,9 @@
     "EMAIL_FROM": "Guardian by SARZA <noreply@mybestlife.live>",
     "EMERGENCY_PHONE": "+27219370300",
     "VAPID_SUBJECT": "mailto:noreply@mybestlife.live",
-    "GEOCODE_URL": "https://nominatim.openstreetmap.org/reverse"
+    "GEOCODE_URL": "https://nominatim.openstreetmap.org/reverse",
+    // Map tiles behind the end-of-trip card. OpenTopoMap asks for attribution, which the card shows. '' turns the map off.
+    "MAP_TILES_URL": "https://tile.opentopomap.org/{z}/{x}/{y}.png"
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "beacon", "database_id": "e716fd9d-d455-4b63-b48f-b634b463b326", "migrations_dir": "migrations" }

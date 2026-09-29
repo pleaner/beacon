@@ -236,45 +236,6 @@
       const ini = e.target.value.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('')
       if (ini) av.textContent = ini
     })
-
-    // Voice note: record, stop, then play back or record again. The recording rides in a
-    // hidden file input so it posts with the form. Safari gives audio/mp4, Chrome audio/webm.
-    const voice = $('[data-voice]', form)
-    if (voice && window.MediaRecorder && navigator.mediaDevices) {
-      voice.hidden = false
-      const rec = $('[data-voice-rec]', voice)
-      const play = $('audio', voice)
-      const input = $('input[type=file]', voice)
-      let recorder = null
-      rec.addEventListener('click', async () => {
-        if (recorder) { recorder.stop(); return }
-        let stream
-        try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) } catch { rec.textContent = 'Allow the microphone to record'; return }
-        const chunks = []
-        const r = recorder = new MediaRecorder(stream, { audioBitsPerSecond: 64000 })
-        r.ondataavailable = (e) => chunks.push(e.data)
-        r.onstop = () => {
-          stream.getTracks().forEach((t) => t.stop())
-          recorder = null
-          const type = (r.mimeType || chunks[0]?.type || 'audio/webm').split(';')[0]
-          const file = new File(chunks, 'voice-note.' + type.split('/')[1], { type })
-          // Too big would fail the whole trip on the server, so drop it here.
-          if (file.size > 2 * 1024 * 1024) { input.value = ''; rec.textContent = 'Too long. Record a shorter note'; return }
-          const dt = new DataTransfer()
-          dt.items.add(file)
-          input.files = dt.files
-          play.src = URL.createObjectURL(file)
-          play.hidden = false
-          rec.textContent = 'Record again'
-        }
-        r.start()
-        play.hidden = true
-        rec.textContent = 'Stop'
-        // ponytail: two minutes at 64 kbit/s stays under the server's 2 MB cap
-        setTimeout(() => r.state === 'recording' && r.stop(), 120000)
-      })
-      form.addEventListener('step', () => recorder?.stop())
-    }
   }
 
   // Flags follow the chosen country code (only South Africa has one drawn).
@@ -402,6 +363,72 @@
         if (r.ok) { render(j.messages); text.value = '' } else alert(j.error || 'Not sent. Try again.')
       } catch { alert('Not sent. Check your signal and try again.') } finally { btn.disabled = false }
     })
+  }
+
+  // ---------- end of trip: share ----------
+  const done = $('[data-share-url]')
+  if (done) {
+    const { shareUrl: url, shareText: text, shareName: name } = done.dataset
+    // An SVG drawn through <img> can't reach the page's web fonts, so the PNG falls back to system fonts.
+    // Pin each line to its width in the web font, so a wider fallback is squeezed rather than overflowing.
+    const cardPng = () => document.fonts.ready.then(() => new Promise((resolve, reject) => {
+      const card = $('#trip-card').cloneNode(true)
+      $$('text', $('#trip-card')).forEach((t, i) => {
+        const c = $$('text', card)[i]
+        if (!c.hasAttribute('textLength')) { c.setAttribute('textLength', t.getComputedTextLength().toFixed(1)); c.setAttribute('lengthAdjust', 'spacingAndGlyphs') }
+      })
+      const svg = new XMLSerializer().serializeToString(card)
+      const img = new Image()
+      img.onload = () => {
+        const cv = document.createElement('canvas')
+        cv.width = 1080; cv.height = 1920
+        cv.getContext('2d').drawImage(img, 0, 0, 1080, 1920)
+        cv.toBlob((b) => (b ? resolve(new File([b], name, { type: 'image/png' })) : reject(new Error('no image'))), 'image/png')
+      }
+      img.onerror = reject
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+    }))
+    const share = async (data) => {
+      try { await navigator.share(data); return true } catch (e) { return e && e.name === 'AbortError' }
+    }
+    // Draw it now: Safari only opens the share sheet straight after a tap, not after slow work.
+    const ready = cardPng().catch(() => null)
+    $('[data-share-card]').addEventListener('click', async () => {
+      const file = await ready
+      if (file && navigator.canShare && navigator.canShare({ files: [file] }) && (await share({ files: [file], text: `${text} ${url}` }))) return
+      // No file sharing (most desktops): save the image instead.
+      if (file) { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; a.click() }
+    })
+  }
+
+  // ---------- end of trip: confetti ----------
+  // ponytail: hand-rolled, SARZA navy, red and yellow; skipped for people who turn motion off.
+  if (done && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const cv = document.createElement('canvas')
+    cv.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:50'
+    document.body.append(cv)
+    const W = (cv.width = innerWidth * devicePixelRatio), H = (cv.height = innerHeight * devicePixelRatio)
+    const ctx = cv.getContext('2d'), colors = ['#212c65', '#d2202f', '#fadf06']
+    const d = devicePixelRatio
+    // Staggered above the top edge so it keeps raining for a few seconds.
+    const bits = Array.from({ length: 400 }, (_, i) => ({
+      x: Math.random() * W, y: -Math.random() * H * 1.5 - 20 * d, vy: (3 + Math.random() * 4) * d,
+      sway: Math.random() * Math.PI * 2, r: Math.random() * 6, vr: Math.random() * 0.2 - 0.1,
+      w: (7 + Math.random() * 6) * d, h: (11 + Math.random() * 8) * d, c: colors[i % 3],
+    }))
+    const frame = (t) => {
+      ctx.clearRect(0, 0, W, H)
+      let live = 0
+      for (const b of bits) {
+        b.y += b.vy; b.x += Math.sin(t / 400 + b.sway) * 1.5 * d; b.r += b.vr
+        if (b.y > H + 20 * d) continue
+        live++
+        ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r); ctx.scale(1, Math.cos(t / 150 + b.sway))
+        ctx.fillStyle = b.c; ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h); ctx.restore()
+      }
+      if (live) requestAnimationFrame(frame); else cv.remove()
+    }
+    requestAnimationFrame(frame)
   }
 
   // ---------- operator menu ----------

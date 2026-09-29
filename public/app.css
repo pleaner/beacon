@@ -397,3 +397,8 @@ input:not([type=range]), select, textarea { transition: border-color .15s ease, 
   .brief-pos tr { break-inside: avoid; }
   a { color: inherit; text-decoration: none; }
 }
+
+/* end of trip: no app bar, the card edge to edge on navy, so the screen reads as one picture */
+main.done { padding: env(safe-area-inset-top) 0 calc(24px + env(safe-area-inset-bottom)); gap: 12px; }
+main.done .actions { padding: 0 20px; }
+main.done .btn.ghost { color: #fff; }
