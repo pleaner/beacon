@@ -2,7 +2,7 @@ import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { afterEach, describe, expect, it } from 'vitest'
 import worker from '../src/index'
-import { addSubscription, insertPositions, listPositions, listSubscriptionsForUser } from '../src/lib/db'
+import { addSubscription, insertPositions, listPositions, listSubscriptionsForUser, setSetting } from '../src/lib/db'
 import { setSenderForTests } from '../src/lib/push'
 import { fitMap } from '../src/lib/map'
 import { getTrip, markOverdue, routeSummary, startTrip, type NewTrip } from '../src/lib/trips'
@@ -49,6 +49,11 @@ describe('GET /trip', () => {
     expect(html).toContain(`action="/api/trips/${t.id}/extend"`)
     expect(html).toContain('data-help-slider')
     expect(html).not.toContain('Are you okay?')
+    // the waiting screen for a call that hasn't got through, and the admin's text number for the phone to keep
+    expect(html).toMatch(/<section id="help-pending"[^>]* hidden/)
+    expect(html).toContain("If we don&#39;t hear from you by then, we&#39;ll come and find you.")
+    await setSetting(env.DB, 'sms_number', '+27821234567')
+    expect(await (await call('/trip', { cookie })).text()).toContain('data-sms="+27821234567"')
   })
 
   it('shows the overdue banner', async () => {
@@ -64,9 +69,11 @@ describe('GET /trip', () => {
     await call(`/api/trips/${t.id}/help`, { cookie, ...json({}) })
     const html = await (await call('/trip', { cookie })).text()
     expect(html).toContain('SARZA has been alerted')
-    expect(html).toContain('tel:+27219370300')
+    expect(html).toContain('Finding your location')
     expect(html).toContain(`action="/api/trips/${t.id}/cancel"`)
     expect(html).toContain('data-trip-status="help"')
+    await call(`/api/trips/${t.id}/positions`, { cookie, ...json([{ lat: -33.9, lng: 18.4, accuracy: 10, at: Date.now() }]) })
+    expect(await (await call('/trip', { cookie })).text()).toContain('Last position')
   })
 
   it('renders an error passed on the query string in a red banner', async () => {
@@ -192,6 +199,21 @@ describe('positions', () => {
     expect(list).toHaveLength(2)
     expect(list[1].battery).toBe(60)
     expect(list[0].at).toBeGreaterThan(recent)
+  })
+
+  it('keeps the signal each fix was taken with, and drops values it does not know', async () => {
+    const { t, cookie } = await live()
+    const now = Date.now()
+    await call(`/api/trips/${t.id}/positions`, { cookie, ...json([
+      { lat: -34.1, lng: 18.4, signal: 'none', at: now - 3000 },
+      { lat: -34.2, lng: 18.5, signal: '4g', at: now - 2000 },
+      { lat: -34.3, lng: 18.6, signal: 'bars:5', at: now - 1000 },
+    ]) })
+    expect((await listPositions(env.DB, t.id)).map((p) => p.signal)).toEqual([null, '4g', 'none'])
+    const o = await makeOperator()
+    const board = await (await call(`/board/trips/${t.id}`, { cookie: cookieFor(o.token) })).text()
+    expect(board).toContain(' · No signal')
+    expect(board).toContain(' · 4G')
   })
 
   it('clamps a future timestamp to now and drops fixes from before the trip', async () => {

@@ -17,8 +17,8 @@ const Banners: FC<{ error?: string; saved?: boolean; sent?: string | null }> = (
 )
 
 export const AdminPage: FC<{
-  tab: AdminTab; users: User[]; me: User; activity: Activity; items: string[]; grace: string; sent: string | null; saved: boolean; error?: string; q?: string
-}> = ({ tab, users, me, activity, items, grace, sent, saved, error, q = '' }) => {
+  tab: AdminTab; users: User[]; me: User; activity: Activity; items: string[]; grace: string; sms: string; sent: string | null; saved: boolean; error?: string; q?: string
+}> = ({ tab, users, me, activity, items, grace, sms, sent, saved, error, q = '' }) => {
   const needle = q.trim().toLowerCase()
   const shown = needle ? users.filter((u) => [u.name, u.email, u.phone].some((v) => v?.toLowerCase().includes(needle))) : users
   return (
@@ -114,6 +114,11 @@ export const AdminPage: FC<{
               <label for="s-grace">Grace period in minutes</label>
               <p class="muted" style="margin: 0; font-size: 14px;">How long after the "are you okay?" prompt before operators are pushed.</p>
               <input id="s-grace" name="grace_minutes" type="number" min={1} max={1440} value={grace} />
+            </div>
+            <div class="field">
+              <label for="s-sms">SARZA text number</label>
+              <p class="muted" style="margin: 0; font-size: 14px;">When a call for help can't get through, explorers get a button to text this number. Leave blank to hide it.</p>
+              <input id="s-sms" name="sms_number" type="tel" value={sms} placeholder="+27 82 123 4567" />
             </div>
             <button class="btn" type="submit">Save</button>
           </form>

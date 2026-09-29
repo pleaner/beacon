@@ -3,6 +3,7 @@ import type { AppEnv } from '../env'
 import { ACTIVITIES, type Activity } from '../lib/constants'
 import { createUser, deleteUser, getChecklist, getSetting, getUserByEmail, getUserById, listUsers, setChecklist, setSetting, updateUser, type Role } from '../lib/db'
 import { readBody, requireRole, str } from '../lib/middleware'
+import { normalizePhone } from '../lib/phone'
 import { getSender, pushToRoles } from '../lib/push'
 import { ADMIN_TABS, AdminPage, AdminUserPage, type AdminTab } from '../views/admin'
 import { listOpenTrips } from '../lib/trips'
@@ -18,12 +19,12 @@ async function render(c: Context<AppEnv>, over: { tab?: string; error?: string; 
   const tab: AdminTab = rawTab in ADMIN_TABS ? (rawTab as AdminTab) : 'users'
   const activityQ = c.req.query('activity') ?? 'hike'
   const activity = (activityQ in ACTIVITIES ? activityQ : 'hike') as Activity
-  const [users, items, grace, open] = await Promise.all([
-    listUsers(c.env.DB), getChecklist(c.env.DB, activity), getSetting(c.env.DB, 'grace_minutes', '30'), listOpenTrips(c.env.DB),
+  const [users, items, grace, sms, open] = await Promise.all([
+    listUsers(c.env.DB), getChecklist(c.env.DB, activity), getSetting(c.env.DB, 'grace_minutes', '30'), getSetting(c.env.DB, 'sms_number', ''), listOpenTrips(c.env.DB),
   ])
   return c.html(
     <Layout title={ADMIN_TABS[tab]} user={me} current={tab} helpCount={open.filter((t) => t.status === 'help').length}>
-      <AdminPage tab={tab} users={users} me={me} activity={activity} items={items} grace={grace} q={c.req.query('q') ?? ''}
+      <AdminPage tab={tab} users={users} me={me} activity={activity} items={items} grace={grace} sms={sms} q={c.req.query('q') ?? ''}
         sent={c.req.query('sent') ?? null} saved={c.req.query('saved') === '1'} error={over.error} />
     </Layout>,
     over.status ?? 200,
@@ -102,6 +103,13 @@ admin.post('/admin/settings', async (c) => {
   const b = await readBody(c)
   const n = Number(str(b, 'grace_minutes'))
   if (!Number.isInteger(n) || n < 1 || n > 1440) return render(c, { tab: 'settings', error: 'Grace period must be 1 to 1440 minutes', status: 400 })
+  // Blank clears the text number, which hides the "Send SARZA a text" button.
+  let sms: string | null = null
+  if ('sms_number' in b) {
+    sms = normalizePhone(str(b, 'sms_number')) ?? ''
+    if (sms && !/^\+\d{8,15}$/.test(sms)) return render(c, { tab: 'settings', error: 'Text number must be a phone number, like 082 123 4567 or +27 82 123 4567', status: 400 })
+  }
   await setSetting(c.env.DB, 'grace_minutes', String(n))
+  if (sms !== null) await setSetting(c.env.DB, 'sms_number', sms)
   return c.redirect('/admin?tab=settings&saved=1', 303)
 })

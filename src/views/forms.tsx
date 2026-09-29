@@ -19,14 +19,14 @@ export const IconInput: FC<{
   </div>
 )
 
-export const IconTextarea: FC<{ id: string; name: string; label: string; icon: IconName; value?: string | null; placeholder?: string; hideLabel?: boolean }> = (
-  { id, name, label, icon, value, placeholder, hideLabel },
+export const IconTextarea: FC<{ id: string; name: string; label: string; icon: IconName; value?: string | null; placeholder?: string; hideLabel?: boolean; required?: boolean }> = (
+  { id, name, label, icon, value, placeholder, hideLabel, required },
 ) => (
   <div class="field">
     <label for={id} class={hideLabel ? 'sr' : undefined}>{label}</label>
     <div class="control has-icon">
       <Icon name={icon} />
-      <textarea id={id} name={name} placeholder={placeholder}>{value ?? ''}</textarea>
+      <textarea id={id} name={name} placeholder={placeholder} required={required}>{value ?? ''}</textarea>
     </div>
   </div>
 )
@@ -100,13 +100,12 @@ export const FlowHead: FC<{ total: number; backHref: string; cancelHref?: string
   </header>
 )
 
-export const Step: FC<PropsWithChildren<{ title: string; lead?: Child; icon?: IconName; eyebrowLabel?: string; next?: string | false; skip?: boolean; submit?: Child }>> = (
-  { title, lead, icon, eyebrowLabel, next = 'Next', skip, submit, children },
+export const Step: FC<PropsWithChildren<{ title: string; lead?: Child; next?: string | false; skip?: boolean; submit?: Child }>> = (
+  { title, lead, next = 'Next', skip, submit, children },
 ) => (
   <section class="step" data-step aria-label={title}>
     <div class="step-title">
-      {icon && <span class="eyebrow" role="img" aria-label={eyebrowLabel ?? ''}><Icon name={icon} size={24} /></span>}
-      <h1 class="display">{title}</h1>
+      <div class="row" style="gap: 14px;"><img src="/sarza-logo.png" alt="SARZA" width="64" height="64" /><h1 class="display">{title}</h1></div>
       {lead && <p class="lead">{lead}</p>}
     </div>
     {children}

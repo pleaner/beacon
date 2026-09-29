@@ -5,10 +5,10 @@ import { ACTIVITIES, type Activity } from '../lib/constants'
 import { getChecklist, getSetting, listMessages, listPositions } from '../lib/db'
 import { requireRole } from '../lib/middleware'
 import { canSeePhoto } from '../lib/photos'
-import { getOpenTrip, getTrip, lastTripForUser, previousGearPhotos, previousShoePhotos, routeSummary } from '../lib/trips'
+import { getOpenTrip, getTrip, lastTripForUser, listPets, previousGearPhotos, previousShoePhotos, routeSummary } from '../lib/trips'
 import { Layout } from '../views/layout'
 import { assetImage, fitMap, tileImages } from '../lib/map'
-import { ActiveTrip, Home, HelpScreen, MAP_BOX, NewTripForm, ProfileForm, TripDone, Welcome, type CardMap, type TripDraft } from '../views/explorer'
+import { ActiveTrip, Home, HelpScreen, MAP_BOX, NewTripForm, PetsPage, ProfileForm, TripDone, Welcome, type CardMap, type TripDraft } from '../views/explorer'
 
 export const explorer = new Hono<AppEnv>()
 
@@ -31,15 +31,17 @@ explorer.get('/trip', requireRole('explorer', 'operator', 'admin'), async (c) =>
   if (!trip) return c.redirect('/')
   const error = c.req.query('error')
   const messages = await listMessages(c.env.DB, trip.id)
-  const attrs = { 'data-trip-id': trip.id, 'data-trip-status': trip.status, 'data-vapid': c.env.VAPID_PUBLIC_KEY, 'data-emergency': c.env.EMERGENCY_PHONE }
+  const sms = await getSetting(c.env.DB, 'sms_number', '')
+  const attrs = { 'data-trip-id': trip.id, 'data-trip-status': trip.status, 'data-vapid': c.env.VAPID_PUBLIC_KEY, 'data-emergency': c.env.EMERGENCY_PHONE, 'data-sms': sms }
   if (trip.status === 'help') {
+    const [lastFix] = await listPositions(c.env.DB, trip.id, 1)
     return c.html(
-      <Layout title="Help is coming" user={user} bodyAttrs={attrs} variant="bare" bodyClass="red">
-        <HelpScreen trip={trip} messages={messages} emergency={c.env.EMERGENCY_PHONE} error={error} />
+      <Layout title="Help is coming" user={user} bodyAttrs={attrs} variant="bare">
+        <HelpScreen trip={trip} messages={messages} emergency={c.env.EMERGENCY_PHONE} lastFix={lastFix ?? null} error={error} />
       </Layout>,
     )
   }
-  return c.html(<Layout title="Your trip" user={user} variant="app" bodyAttrs={attrs}><ActiveTrip trip={trip} messages={messages} error={error} /></Layout>)
+  return c.html(<Layout title="Your trip" user={user} variant="app" bodyAttrs={attrs}><ActiveTrip trip={trip} name={user.name} error={error} /></Layout>)
 })
 
 // After "I'm back": the route as a card the explorer can share, and a nudge to share the app.
@@ -71,14 +73,14 @@ explorer.get('/trip/new', requireRole('explorer', 'operator', 'admin'), async (c
   return c.html(await newTripPage(c.env, user, activity))
 })
 
-export async function newTripPage(env: Env, user: User, activity: Activity, error?: string, opts: { errorAt?: 'intro' | 'when' | 'photos'; draft?: TripDraft } = {}) {
-  const [checklist, shoes, gear, grace] = await Promise.all([
+export async function newTripPage(env: Env, user: User, activity: Activity, error?: string, opts: { errorAt?: 'intro' | 'where' | 'when' | 'photos'; draft?: TripDraft } = {}) {
+  const [checklist, shoes, gear, grace, knownPets] = await Promise.all([
     getChecklist(env.DB, activity), previousShoePhotos(env.DB, user.id), previousGearPhotos(env.DB, user.id, activity),
-    getSetting(env.DB, 'grace_minutes', '30'),
+    getSetting(env.DB, 'grace_minutes', '30'), listPets(env.DB, user.id),
   ])
   return (
     <Layout title="New trip" user={user} variant="bare" bodyClass="plain">
-      <NewTripForm user={user} activity={activity} checklist={checklist} shoes={shoes} gear={gear} graceMinutes={Number(grace)} error={error} errorAt={opts.errorAt} draft={opts.draft} />
+      <NewTripForm user={user} activity={activity} checklist={checklist} shoes={shoes} gear={gear} knownPets={knownPets} graceMinutes={Number(grace)} error={error} errorAt={opts.errorAt} draft={opts.draft} />
     </Layout>
   )
 }
@@ -90,6 +92,15 @@ export function profilePage(user: User | null, opts: { error?: string; vapid?: s
     </Layout>
   )
 }
+
+explorer.get('/pets', requireRole('explorer', 'operator', 'admin'), async (c) => {
+  const user = c.var.user!
+  return c.html(
+    <Layout title="My pets" user={user} variant="app">
+      <PetsPage pets={await listPets(c.env.DB, user.id)} saved={c.req.query('saved') === '1'} />
+    </Layout>,
+  )
+})
 
 explorer.get('/profile', async (c) => {
   const user = c.var.user

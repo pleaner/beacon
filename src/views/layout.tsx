@@ -28,6 +28,8 @@ export const Layout: FC<Props> = ({ title, user, bodyAttrs = {}, variant, bodyCl
     <html lang="en">
       <head>
         <meta charset="utf-8" />
+        {/* Inline, ahead of any stylesheet: the fonts sheet can land first, and a page without the opt-in at that moment drops the transition. */}
+        {raw('<style>@view-transition { navigation: auto; }</style>')}
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#212C65" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -95,6 +97,10 @@ const AppMenu: FC<{ user: User }> = ({ user }) => {
           <a class="item" href="/profile">
             <Icon name="user" size={18} />
             <span class="grow">Profile</span>
+          </a>
+          <a class="item" href="/pets">
+            <Icon name="paw" size={18} />
+            <span class="grow">My pets</span>
           </a>
           {isOps && (
             <a class="item" href="/board">

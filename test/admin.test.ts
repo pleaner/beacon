@@ -118,7 +118,7 @@ describe('checklists tab', () => {
   it('shows and saves items per activity', async () => {
     const a = await makeAdmin()
     let html = await (await exports.default.fetch(`${BASE}/admin?tab=checklists&activity=climb`, { headers: { cookie: cookieFor(a.token) } })).text()
-    expect(html).toContain('Rack and rope checked')
+    expect(html).toContain('Rack, rope and harness checked')
     const res = await exports.default.fetch(`${BASE}/admin/checklists`, form(cookieFor(a.token), { activity: 'climb', items_text: 'Helmet\n\nRope\n' }))
     expect(res.headers.get('location')).toBe('/admin?tab=checklists&activity=climb&saved=1')
     expect(await getChecklist(env.DB, 'climb')).toEqual(['Helmet', 'Rope'])
@@ -144,6 +144,17 @@ describe('broadcast tab', () => {
 })
 
 describe('settings tab', () => {
+  it('saves, normalises, rejects and clears the SARZA text number', async () => {
+    const a = await makeAdmin()
+    const post = (sms_number: string) => exports.default.fetch(`${BASE}/admin/settings`, form(cookieFor(a.token), { grace_minutes: '30', sms_number }))
+    expect((await post('082 123 4567')).status).toBe(303)
+    expect(await getSetting(env.DB, 'sms_number', 'x')).toBe('+27821234567')
+    expect((await post('12')).status).toBe(400)
+    expect(await getSetting(env.DB, 'sms_number', 'x')).toBe('+27821234567')
+    await post('')
+    expect(await getSetting(env.DB, 'sms_number', 'x')).toBe('')
+  })
+
   it('saves grace_minutes within bounds', async () => {
     const a = await makeAdmin()
     let res = await exports.default.fetch(`${BASE}/admin/settings`, form(cookieFor(a.token), { grace_minutes: '45' }))
