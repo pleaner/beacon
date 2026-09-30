@@ -31,6 +31,7 @@ export interface Trip {
   start_place: string | null
   gear_photo_key: string | null
   activity_text: string | null
+  siren_at: number | null
 }
 
 export interface Companion {
@@ -198,6 +199,9 @@ export function cancelHelp(db: DB, id: string) {
       .bind(id),
   )
 }
+export function soundSiren(db: DB, id: string, now: number) {
+  return changed(db.prepare(`UPDATE trips SET siren_at = ? WHERE id = ? AND status != 'closed'`).bind(now, id))
+}
 export function operatorClose(db: DB, id: string, now: number) {
   return changed(
     db.prepare(`UPDATE trips SET status = 'closed', closed_at = ?, closed_reason = 'operator_closed' WHERE id = ? AND status != 'closed'`).bind(now, id),
@@ -280,6 +284,8 @@ export const SA_OFFSET_MS = 2 * 60 * 60 * 1000
 export function parseReturnBy(value: string | number | null | undefined, now: number): number | null {
   let ms: number
   if (typeof value === 'number') ms = value
+  // epoch milliseconds as text, from the native apps' multipart form
+  else if (typeof value === 'string' && /^\d{12,14}$/.test(value)) ms = Number(value)
   else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {
     const [d, t] = value.split('T')
     const [y, mo, da] = d.split('-').map(Number)

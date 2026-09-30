@@ -26,6 +26,7 @@ export async function runCron(env: Env, send: PushSender, now: number) {
         url: '/',
         tag: 'overdue',
         requireInteraction: true,
+        kind: 'prompt',
       })
     } catch (e) {
       console.error('prompt failed', trip.id, String(e))
@@ -40,6 +41,7 @@ export async function runCron(env: Env, send: PushSender, now: number) {
         body: `${tripLine(trip)}, due ${formatTime(trip.return_by)}. No answer for ${graceMinutes} min.`,
         url: `/board/trips/${trip.id}`,
         tag: `trip-${trip.id}`,
+        kind: 'overdue',
       })
       // Mark only after a push lands, so a failed send retries next minute (same as help below).
       if (sent > 0 && (await markOperatorsAlerted(db, trip.id, now))) alerted++

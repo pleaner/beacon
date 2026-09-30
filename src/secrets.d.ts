@@ -7,6 +7,9 @@ declare namespace Cloudflare {
     VAPID_PUBLIC_KEY: string
     VAPID_PRIVATE_KEY: string
     RESEND_API_KEY: string
+    // Firebase service account JSON for the Android app's push. Unset: phones get no push.
+    FCM_SERVICE_ACCOUNT?: string
+    ANDROID_CERT_SHA256?: string
   }
 }
 

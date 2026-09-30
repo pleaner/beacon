@@ -20,6 +20,15 @@ app.use(async (c, next) => {
 app.use(loadUser)
 
 app.get('/health', (c) => c.text('ok'))
+// Lets the Android app open the emailed sign-in link. ANDROID_CERT_SHA256: the signing key fingerprints, comma-separated.
+app.get('/.well-known/assetlinks.json', (c) => {
+  const fingerprints = (c.env.ANDROID_CERT_SHA256 ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+  if (fingerprints.length === 0) return c.notFound()
+  return c.json([{
+    relation: ['delegate_permission/common.handle_all_urls'],
+    target: { namespace: 'android_app', package_name: 'za.org.sarza.guardian', sha256_cert_fingerprints: fingerprints },
+  }])
+})
 app.route('/api', api)
 app.route('/', auth)
 app.route('/', board)

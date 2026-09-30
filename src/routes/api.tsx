@@ -4,14 +4,15 @@ import { setCookie } from 'hono/cookie'
 import type { AppEnv } from '../env'
 import { COOKIE_MAX_AGE, COOKIE_NAME, hashToken, newToken } from '../lib/auth'
 import { ACTIVITIES, AREAS, BLOOD_TYPES, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity, type Area } from '../lib/constants'
-import { addMessage, addSubscription, createUser, getMessageMedia, insertPositions, listMessages, MAX_MESSAGE, SIGNALS, updateUser } from '../lib/db'
+import { addMessage, addSubscription, createUser, deleteSubscription, getChecklist, getMessageMedia, getSetting, getUserById, insertPositions, lastPositionsByTrip, listMessages, listPositions, MAX_MESSAGE, SIGNALS, updateUser, type User } from '../lib/db'
 import { done, num, readBody, requireApiRole, str, wantsJson, type Body } from '../lib/middleware'
 import { normalizePhone } from '../lib/phone'
 import { getPlaceLookup } from '../lib/places'
 import { saveMessageMedia, savePhoto } from '../lib/photos'
-import { getSender, helpPayload, pushToRoles, pushToUser } from '../lib/push'
-import { adminSetStatus, ADMIN_STATUSES, cancelHelp, extendTrip, getTrip, listPets, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setPets, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
+import { FCM_PREFIX, getSender, helpPayload, pushToRoles, pushToUser } from '../lib/push'
+import { adminSetStatus, ADMIN_STATUSES, cancelHelp, extendTrip, getOpenTrip, getTrip, listCompanions, listOpenTrips, listPets, soundSiren, tripLine, tripPlace, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setPets, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
 import { newTripPage, profilePage } from './explorer'
+import { redeemLink } from './auth'
 
 export const api = new Hono<AppEnv>()
 
@@ -98,7 +99,7 @@ api.post('/profile', async (c) => {
   try {
     const photo_key = await savePhoto(c.env.PHOTOS, created.id, body.photo)
     if (photo_key) await updateUser(c.env.DB, created.id, { photo_key })
-    return done(c, { id: created.id }, '/?welcome=1')
+    return done(c, { id: created.id, token }, '/?welcome=1')
   } catch (e) {
     return failWith((e as Error).message, created)
   }
@@ -299,7 +300,7 @@ api.post('/trips/:id/positions', requireApiRole('explorer', 'operator', 'admin')
     })
   }
   const saved = await insertPositions(c.env.DB, rows)
-  return c.json({ ok: true, saved })
+  return c.json({ ok: true, saved, status: trip.status, return_by: trip.return_by, siren_at: trip.siren_at })
 })
 
 // Chat: an explorer sees only their own trip's thread, operators and admins any trip's.
@@ -346,8 +347,8 @@ api.post('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'),
   const send = getSender(c.env)
   c.executionCtx.waitUntil(
     (user.role === 'explorer'
-      ? pushToRoles(c.env.DB, send, ['operator', 'admin'], { title: `Message from ${user.name}`, body: short, url: `/board/trips/${trip.id}`, tag })
-      : pushToUser(c.env.DB, send, trip.user_id, { title: `SARZA: ${user.name}`, body: short, url: '/trip', tag })
+      ? pushToRoles(c.env.DB, send, ['operator', 'admin'], { title: `Message from ${user.name}`, body: short, url: `/board/trips/${trip.id}`, tag, kind: 'message' })
+      : pushToUser(c.env.DB, send, trip.user_id, { title: `SARZA: ${user.name}`, body: short, url: '/trip', tag, kind: 'message' })
     ).then((r) => { if (!r.sent) console.warn('message notification reached no one', trip.id, user.role === 'explorer' ? 'to operators' : 'to explorer') }),
   )
   return done(c, { messages: await listMessages(c.env.DB, trip.id) }, user.role === 'explorer' ? '/trip' : `/board/trips/${trip.id}`)
@@ -381,4 +382,80 @@ api.post('/push/subscribe', requireApiRole('explorer', 'operator', 'admin'), asy
   if (!endpoint || !p256dh || !auth) return c.json({ error: 'Bad subscription' }, 400)
   await addSubscription(c.env.DB, c.var.user!.id, { endpoint, p256dh, auth })
   return c.json({ ok: true })
+})
+
+// ---------- native apps ----------
+
+// A user as the apps see them: no token hashes.
+function publicUser(user: User) {
+  const { token_hash: _t, app_token_hash: _a, magic_link_expires: _m, ...rest } = user as User & { magic_link_expires?: number | null }
+  return rest
+}
+
+// Everything the explorer screens need in one call, so the app can keep a copy for when there's no signal.
+api.get('/me', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
+  const user = c.var.user!
+  const [trip, pets, grace, sms, checklists] = await Promise.all([
+    getOpenTrip(c.env.DB, user.id), listPets(c.env.DB, user.id), getSetting(c.env.DB, 'grace_minutes', '30'),
+    getSetting(c.env.DB, 'sms_number', ''),
+    Promise.all(Object.keys(ACTIVITIES).map(async (a) => [a, await getChecklist(c.env.DB, a)] as const)),
+  ])
+  return c.json({
+    user: publicUser(user), trip, pets, grace_minutes: Number(grace), emergency_phone: c.env.EMERGENCY_PHONE,
+    sms_number: sms || null, checklists: Object.fromEntries(checklists), activities: ACTIVITIES,
+  })
+})
+
+// The app's half of the magic link: the operator taps the emailed link, the app opens and sends it here.
+api.post('/auth/verify', async (c) => {
+  const user = await redeemLink(c.env, str(await readBody(c), 'link') ?? '')
+  if (!user) return c.json({ error: 'That link has expired or was already used. Ask for a new one.' }, 400)
+  const token = newToken()
+  await updateUser(c.env.DB, user.id, { app_token_hash: await hashToken(token) })
+  return c.json({ token, user: publicUser(user) })
+})
+
+api.post('/logout', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
+  const user = c.var.user!
+  const bearer = c.req.header('authorization')?.match(/^Bearer (.+)$/)?.[1] ?? ''
+  const hash = await hashToken(bearer)
+  await updateUser(c.env.DB, user.id, user.app_token_hash === hash ? { app_token_hash: null } : { token_hash: null })
+  return c.json({ ok: true })
+})
+
+// A phone's FCM token. One phone gets one account's pushes: signing in as someone else moves it.
+api.post('/push/device', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
+  const token = str(await readBody(c), 'token')
+  if (!token || token.length > 4096) return c.json({ error: 'Bad token' }, 400)
+  const endpoint = FCM_PREFIX + token
+  await deleteSubscription(c.env.DB, endpoint)
+  await addSubscription(c.env.DB, c.var.user!.id, { endpoint, p256dh: '', auth: '' })
+  return c.json({ ok: true })
+})
+
+api.get('/board', requireApiRole('operator', 'admin'), async (c) => {
+  const trips = await listOpenTrips(c.env.DB)
+  const last = await lastPositionsByTrip(c.env.DB, trips.map((t) => t.id))
+  return c.json({ trips: trips.map((t) => ({ ...t, place: tripPlace(t), line: tripLine(t), last: last.get(t.id) ?? null })) })
+})
+
+api.get('/board/trips/:id', requireApiRole('operator', 'admin'), async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id'))
+  const user = trip && (await getUserById(c.env.DB, trip.user_id))
+  if (!trip || !user) return c.json({ error: 'Not found' }, 404)
+  const [positions, companions, messages] = await Promise.all([
+    listPositions(c.env.DB, trip.id, 50), listCompanions(c.env.DB, trip.id), listMessages(c.env.DB, trip.id),
+  ])
+  return c.json({ trip: { ...trip, place: tripPlace(trip), line: tripLine(trip) }, user: publicUser(user), positions, companions, messages })
+})
+
+// Sound the explorer's siren: pushed now, and repeated in the reply to the phone's next position upload.
+api.post('/board/trips/:id/siren', requireApiRole('operator', 'admin'), async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id'))
+  if (!trip || !(await soundSiren(c.env.DB, trip.id, Date.now()))) return c.json({ error: 'Trip is closed' }, 409)
+  const send = getSender(c.env)
+  c.executionCtx.waitUntil(pushToUser(c.env.DB, send, trip.user_id, {
+    title: 'SARZA is looking for you', body: 'Your phone is sounding so searchers can find you.', url: '/trip', tag: 'siren', kind: 'siren',
+  }))
+  return done(c, { ok: true }, `/board/trips/${trip.id}`)
 })

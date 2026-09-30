@@ -195,7 +195,7 @@ describe('positions', () => {
       { lat: -34.2, lng: 18.5 },
     ]) })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ ok: true, saved: 2 })
+    expect(await res.json()).toMatchObject({ ok: true, saved: 2 })
     const list = await listPositions(env.DB, t.id)
     expect(list).toHaveLength(2)
     expect(list[1].battery).toBe(60)
@@ -225,7 +225,7 @@ describe('positions', () => {
       { lat: -34.2, lng: 18.5, at: t.created_at - 60 * 60_000 },
     ]) })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ ok: true, saved: 1 })
+    expect(await res.json()).toMatchObject({ ok: true, saved: 1 })
     const list = await listPositions(env.DB, t.id)
     expect(list).toHaveLength(1)
     expect(list[0].at).toBeLessThan(now + 60_000)
@@ -240,9 +240,9 @@ describe('positions', () => {
       { lat: -34.2, lng: 18.5, altitude: null, at: threeHoursAgo + 120_000 },
     ]
     let res = await call(`/api/trips/${t.id}/positions`, { cookie, ...json(backlog) })
-    expect(await res.json()).toEqual({ ok: true, saved: 2 })
+    expect(await res.json()).toMatchObject({ ok: true, saved: 2 })
     res = await call(`/api/trips/${t.id}/positions`, { cookie, ...json(backlog) })
-    expect(await res.json()).toEqual({ ok: true, saved: 0 })
+    expect(await res.json()).toMatchObject({ ok: true, saved: 0 })
     const list = await listPositions(env.DB, t.id)
     expect(list).toHaveLength(2)
     expect(list[1]).toMatchObject({ altitude: 1085.4, altitude_accuracy: 12, battery: 55, at: threeHoursAgo })

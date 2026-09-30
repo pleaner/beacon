@@ -13,6 +13,7 @@ export interface User {
   photo_key: string | null
   consent_contact: number
   token_hash: string | null
+  app_token_hash?: string | null
   created_at: number
   birthday: string | null
   gender: string | null
@@ -94,8 +95,9 @@ export async function createUser(db: DB, u: NewUser): Promise<User> {
 export function getUserById(db: DB, id: string) {
   return db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<User>()
 }
+// The web session cookie and the app's bearer token are separate, so each can sign out alone.
 export function getUserByTokenHash(db: DB, hash: string) {
-  return db.prepare('SELECT * FROM users WHERE token_hash = ?').bind(hash).first<User>()
+  return db.prepare('SELECT * FROM users WHERE token_hash = ?1 OR app_token_hash = ?1').bind(hash).first<User>()
 }
 export function getUserByEmail(db: DB, email: string) {
   return db
@@ -108,7 +110,7 @@ export function getUserByEmail(db: DB, email: string) {
 }
 
 const USER_COLS = ['role', 'name', 'phone', 'email', 'organisation', 'emergency_name', 'emergency_phone',
-  'description', 'photo_key', 'consent_contact', 'token_hash', 'birthday', 'gender', 'height_cm', 'weight_kg',
+  'description', 'photo_key', 'consent_contact', 'token_hash', 'app_token_hash', 'birthday', 'gender', 'height_cm', 'weight_kg',
   'shoe_size', 'language', 'emergency_relation', 'allergies', 'conditions', 'medication', 'blood_type'] as const
 
 export async function updateUser(db: DB, id: string, fields: Partial<Omit<User, 'id' | 'created_at'>>) {

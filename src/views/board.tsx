@@ -316,6 +316,19 @@ export const TripDetail: FC<{
 
       {trip.status !== 'closed' && (
         <section class="card">
+          <h2>Siren</h2>
+          <p class="muted" style="margin: 0; font-size: 14px;">
+            Makes {first}'s phone sound loudly, even on silent, so searchers nearby can hear it. Needs the Guardian app.
+            {trip.siren_at && ` Last sounded ${new Date(trip.siren_at).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg' })}.`}
+          </p>
+          <form method="post" action={`/api/board/trips/${trip.id}/siren`} onsubmit="return confirm('Sound the siren on this phone?')">
+            <button class="btn" type="submit">Sound the siren</button>
+          </form>
+        </section>
+      )}
+
+      {trip.status !== 'closed' && (
+        <section class="card">
           <h2>Close trip</h2>
           <p class="muted" style="margin: 0; font-size: 14px;">Only close once you know {first} is safe or the search is handed over.</p>
           <form method="post" action={`/api/board/trips/${trip.id}/close`} onsubmit="return confirm('Close this trip?')">
