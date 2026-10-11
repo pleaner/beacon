@@ -12,6 +12,10 @@ Needs JDK 17 and the Android SDK (`brew install openjdk@17 && brew install --cas
     ./gradlew assembleDebug                                          # talks to guardian.pleaner.com
     ./gradlew installDebug -PguardianUrl=http://10.0.2.2:8787        # emulator against `wrangler dev --ip 0.0.0.0`
 
+Everyone signs in with Google. Pass the server's web OAuth client ID with `-PgoogleClientId=<id>.apps.googleusercontent.com`,
+or put `googleClientId=...` in `~/.gradle/gradle.properties`. Without it the app builds, and the Welcome screen says
+sign-in isn't set up.
+
 ## What runs where
 
 - `TripService`: foreground location service for the length of a trip. A fix every 2 minutes (30 s after a call for
@@ -26,6 +30,8 @@ Needs JDK 17 and the Android SDK (`brew install openjdk@17 && brew install --cas
 - Push: create a Firebase project with an Android app `za.org.sarza.guardian`. Put its app id, API key, project id
   and sender id in `~/.gradle/gradle.properties` (see `gradle.properties` for the names), and the service account JSON
   in the worker: `wrangler secret put FCM_SERVICE_ACCOUNT`. Without these, the app works but gets no pushes.
-- Sign-in links: set `ANDROID_CERT_SHA256` on the worker to the release key's SHA-256 fingerprint, so Android
-  opens `https://guardian.pleaner.com/auth/verify` links in the app. Until then operators paste the link.
+- Google sign-in: the Google Cloud project needs two OAuth clients. An Android client for package
+  `za.org.sarza.guardian` with the signing key's SHA-1 (`keytool -list -v -keystore <keystore>`; the debug key and the
+  release key each need their own), and the web client the server checks tokens against. The web client's ID goes in
+  `googleClientId`.
 - Play Console declarations: foreground location service, and the battery optimisation exemption.

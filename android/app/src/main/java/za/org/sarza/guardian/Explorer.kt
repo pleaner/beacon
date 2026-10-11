@@ -69,6 +69,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -80,8 +81,14 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -91,8 +98,40 @@ import kotlin.math.abs
 
 // ---------- welcome ----------
 
+// Everyone signs in with Google, explorers and operators alike. The account's role picks the next screen.
 @Composable
 fun WelcomeScreen(go: (Screen) -> Unit) = Page(Navy, gap = 0.dp, top = 56.dp) {
+    val context = LocalContext.current
+    val work = rememberWork()
+    val scope = rememberCoroutineScope()
+    fun signIn() {
+        if (BuildConfig.GOOGLE_CLIENT_ID.isEmpty()) { work.error = "Google sign-in isn't set up in this build."; return }
+        work.error = null
+        scope.launch {
+            val idToken = try {
+                val option = GetSignInWithGoogleOption.Builder(BuildConfig.GOOGLE_CLIENT_ID).build()
+                val r = CredentialManager.create(context).getCredential(context, GetCredentialRequest.Builder().addCredentialOption(option).build())
+                GoogleIdTokenCredential.createFrom(r.credential.data).idToken
+            } catch (e: GetCredentialCancellationException) {
+                return@launch
+            } catch (e: Exception) {
+                work.error = "Couldn't sign in with Google. Try again."
+                return@launch
+            }
+            var newExplorer = false
+            work.run(scope, {
+                val r = Api.post("/api/auth/google", JSONObject().put("id_token", idToken))
+                Store.signOut()
+                Store.token = r.getString("token")
+                Store.role = r.getJSONObject("user").getString("role")
+                Store.me = JSONObject().put("user", r.getJSONObject("user"))
+                newExplorer = r.optBoolean("needs_profile")
+            }) {
+                Guardian.registerForPush(context)
+                go(if (newExplorer) Screen.Profile else MainActivity.home())
+            }
+        }
+    }
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Logo(132.dp)
         DisplayText("Guardian", Color.White, 44.sp, align = TextAlign.Center)
@@ -101,10 +140,16 @@ fun WelcomeScreen(go: (Screen) -> Unit) = Page(Navy, gap = 0.dp, top = 56.dp) {
             color = Color.White.copy(alpha = .9f), fontSize = 16.sp, textAlign = TextAlign.Center,
         )
         Spacer(Modifier)
-        GButton("Get started", Btn.Yellow) { go(Screen.Profile) }
+        ErrorBanner(work.error)
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 58.dp).clip(RoundedCornerShape(14.dp)).background(Color.White)
+                .clickable(enabled = !work.busy) { signIn() }.padding(horizontal = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Image(painterResource(R.drawable.google_g), null, Modifier.size(22.dp))
+            Text(if (work.busy) "Signing you in…" else "Continue with Google", color = Ink, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        }
         Text("Turn a bad day into a great story.", color = Color.White.copy(alpha = .85f), fontSize = 14.sp)
-        Spacer(Modifier)
-        LinkText("I'm a SARZA operator", Color.White) { go(Screen.SignIn(null)) }
     }
 }
 

@@ -1,5 +1,11 @@
 APP_URL=
-SESSION_SECRET=
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
-RESEND_API_KEY=
+# Sign in with Google (web OAuth client). Without these there is no way to sign in except minting a session; see .claude/skills/verify.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+# Sign in with Apple. Optional; the Apple button appears once all four are set.
+APPLE_SERVICES_ID=
+APPLE_TEAM_ID=
+APPLE_KEY_ID=
+APPLE_PRIVATE_KEY=

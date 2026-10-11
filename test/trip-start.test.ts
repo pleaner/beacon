@@ -24,14 +24,13 @@ describe('parseReturnBy', () => {
 })
 
 describe('GET /', () => {
-  it('welcomes an anonymous visitor instead of dropping them in the profile form', async () => {
+  it('sends an anonymous visitor to sign in, where the welcome and Google button are', async () => {
     const res = await exports.default.fetch(`${BASE}/`, { redirect: 'manual' })
-    expect(res.status).toBe(200)
-    const html = await res.text()
+    expect(res.headers.get('location')).toBe('/login')
+    const html = await (await exports.default.fetch(`${BASE}/login`)).text()
     expect(html).toContain('<h1 class="display">Guardian</h1>')
     expect(html).toContain('File a plan before you head out')
-    expect(html).toContain('href="/profile"')
-    expect(html).toContain('href="/login"')
+    expect(html).toContain('Continue with Google')
   })
 
   it('shows plan button when no open trip', async () => {

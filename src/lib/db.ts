@@ -14,6 +14,8 @@ export interface User {
   consent_contact: number
   token_hash: string | null
   app_token_hash?: string | null
+  google_sub?: string | null
+  apple_sub?: string | null
   created_at: number
   birthday: string | null
   gender: string | null
@@ -104,6 +106,9 @@ export function getUserById(db: DB, id: string) {
 export function getUserByTokenHash(db: DB, hash: string) {
   return db.prepare('SELECT * FROM users WHERE token_hash = ?1 OR app_token_hash = ?1').bind(hash).first<User>()
 }
+export function getUserBySub(db: DB, provider: 'google' | 'apple', sub: string) {
+  return db.prepare(`SELECT * FROM users WHERE ${provider === 'google' ? 'google_sub' : 'apple_sub'} = ?`).bind(sub).first<User>()
+}
 export function getUserByEmail(db: DB, email: string) {
   return db
     .prepare(
@@ -115,7 +120,7 @@ export function getUserByEmail(db: DB, email: string) {
 }
 
 const USER_COLS = ['role', 'name', 'phone', 'email', 'organisation', 'emergency_name', 'emergency_phone',
-  'description', 'photo_key', 'consent_contact', 'token_hash', 'app_token_hash', 'birthday', 'gender', 'height_cm', 'weight_kg',
+  'description', 'photo_key', 'consent_contact', 'token_hash', 'app_token_hash', 'google_sub', 'apple_sub', 'birthday', 'gender', 'height_cm', 'weight_kg',
   'shoe_size', 'language', 'emergency_relation', 'allergies', 'conditions', 'medication', 'blood_type', 'medical_aid', 'medical_aid_plan', 'medical_aid_number'] as const
 
 export async function updateUser(db: DB, id: string, fields: Partial<Omit<User, 'id' | 'created_at'>>) {
@@ -124,20 +129,6 @@ export async function updateUser(db: DB, id: string, fields: Partial<Omit<User, 
   const sets = cols.map((k) => `${k} = ?`).join(', ')
   const vals = cols.map((k) => (fields as Record<string, unknown>)[k])
   await db.prepare(`UPDATE users SET ${sets} WHERE id = ?`).bind(...vals, id).run()
-}
-
-// Issue at most one link a minute per user. Returns false while the last one is under a minute old.
-export async function issueMagicLink(db: DB, id: string, expiresAt: number) {
-  // Every link has the same TTL, so "previous link issued over a minute ago" is "previous expiry a minute before this one".
-  const r = await db
-    .prepare('UPDATE users SET magic_link_expires = ? WHERE id = ? AND (magic_link_expires IS NULL OR magic_link_expires <= ?)')
-    .bind(expiresAt, id, expiresAt - 60_000)
-    .run()
-  return r.meta.changes > 0
-}
-export async function consumeMagicLink(db: DB, id: string, expiresAt: number) {
-  const r = await db.prepare('UPDATE users SET magic_link_expires = NULL WHERE id = ? AND magic_link_expires = ?').bind(id, expiresAt).run()
-  return r.meta.changes > 0
 }
 
 export async function setUserTokenHash(db: DB, id: string, hash: string) {

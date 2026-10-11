@@ -15,7 +15,7 @@ it('has migrated tables and seed data', async () => {
 })
 
 it('redirects the old beacon.pleaner.com domain to APP_URL, keeping path and query', async () => {
-  const res = await exports.default.fetch('https://beacon.pleaner.com/auth/verify?t=abc', { redirect: 'manual' })
+  const res = await exports.default.fetch('https://beacon.pleaner.com/trip?x=abc', { redirect: 'manual' })
   expect(res.status).toBe(301)
-  expect(res.headers.get('location')).toBe(`${env.APP_URL}/auth/verify?t=abc`)
+  expect(res.headers.get('location')).toBe(`${env.APP_URL}/trip?x=abc`)
 })

@@ -3,13 +3,19 @@
 // Cloudflare.Env here, so secrets only need declaring once, on Cloudflare.Env.
 declare namespace Cloudflare {
   interface Env {
-    SESSION_SECRET: string
     VAPID_PUBLIC_KEY: string
     VAPID_PRIVATE_KEY: string
-    RESEND_API_KEY: string
     // Firebase service account JSON for the Android app's push. Unset: phones get no push.
     FCM_SERVICE_ACCOUNT?: string
-    ANDROID_CERT_SHA256?: string
+    // Sign in with Google: the web OAuth client. The Android app sends ID tokens for this same client ID.
+    GOOGLE_CLIENT_ID?: string
+    GOOGLE_CLIENT_SECRET?: string
+    // Sign in with Apple: the Services ID, the team, and the .p8 key from the Apple Developer account.
+    // Until all four are set there is no Apple button.
+    APPLE_SERVICES_ID?: string
+    APPLE_TEAM_ID?: string
+    APPLE_KEY_ID?: string
+    APPLE_PRIVATE_KEY?: string
   }
 }
 

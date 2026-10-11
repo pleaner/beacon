@@ -15,7 +15,7 @@ Spec: docs/superpowers/specs/2026-09-17-sarza-beacon-design.md
 
 Trigger the cron by hand in dev: `curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"`.
 
-Magic links print in the dev console when RESEND_API_KEY is unset.
+Everyone signs in with Google, or Apple once its keys are set. Without `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.dev.vars` there are no sign-in buttons; `.claude/skills/verify/SKILL.md` shows how to make a session by hand.
 
 ## Test
 
@@ -26,7 +26,9 @@ Magic links print in the dev console when RESEND_API_KEY is unset.
 
     npm run migrate:prod && npm run deploy
 
-Run the migration before the deploy. Local dev uses `npm run migrate:local` and `npm run dev`. Secrets, set with `wrangler secret put NAME`: `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `RESEND_API_KEY`. Production serves https://guardian.pleaner.com.
+Run the migration before the deploy. Local dev uses `npm run migrate:local` and `npm run dev`. Secrets, set with `wrangler secret put NAME`: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and for Apple `APPLE_SERVICES_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (the .p8 file's contents). Deploy only once the Google pair is set: with neither provider set, nobody can sign in.
+
+Google: a Web OAuth client in Google Cloud with the redirect URI `https://guardian.pleaner.com/auth/google/callback`. Apple: a Services ID with the return URL `https://guardian.pleaner.com/auth/apple/callback`, and a Sign in with Apple key. Production serves https://guardian.pleaner.com.
 
 ## First admin
 
@@ -67,6 +69,5 @@ Migration `0002_design_refresh.sql` adds the new columns and the companions tabl
 - The language choice is stored but the app is English only until translations exist.
 - Nominatim's public service allows about one request a second and asks for a real contact in the user agent; move to a paid geocoder if trip volume grows.
 
-- Email sends from noreply@mybestlife.live until pleaner.com is verified in Resend.
 - No background location. Positions arrive only while the app is open.
-- Explorer identity is a cookie. Clearing the browser means a new profile.
+- Accounts are matched by the Google or Apple account id, then by verified email. An Apple user who hides their email gets a new account rather than their old one.

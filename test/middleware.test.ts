@@ -19,11 +19,11 @@ function testApp() {
 }
 
 describe('requireRole', () => {
-  it('redirects anonymous explorers to /profile and operators to /login', async () => {
+  it('sends anyone signed out to /login, explorer pages and operator pages alike', async () => {
     const app = testApp()
     let res = await app.request('/e', {}, env)
     expect(res.status).toBe(302)
-    expect(res.headers.get('location')).toBe('/profile')
+    expect(res.headers.get('location')).toBe('/login')
     res = await app.request('/o', {}, env)
     expect(res.headers.get('location')).toBe('/login')
   })
