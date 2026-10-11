@@ -3,6 +3,8 @@
 Native apps, in order. See `docs/native-plan.md`.
 
 - [ ] Register Apple Developer and Google Play accounts to SARZA as an organisation (needs a D-U-N-S number).
+- [ ] Sign-in: create the Google Web OAuth client and set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the worker before the next deploy.
+- [ ] Sign-in: once the Apple account exists, make a Services ID and key and set the four `APPLE_*` secrets; the Apple button appears by itself. Sign in with Apple on Android comes after.
 - [ ] Request the Critical Alerts entitlement from Apple.
 - [x] Server: sign-in link that opens the app and returns a bearer token.
 - [ ] Server: native push through APNs and FCM, one token per device. FCM is built; APNs comes with the iOS app.
@@ -10,10 +12,9 @@ Native apps, in order. See `docs/native-plan.md`.
 - [x] Server: JSON endpoints for the operator board and trip detail.
 - [x] Android app, explorer side then operator side. See `android/README.md`.
 - [ ] Android: create the Firebase project and set `FCM_SERVICE_ACCOUNT`, so phones get pushes when the app is closed.
-- [ ] Android: make a release signing key, set `ANDROID_CERT_SHA256` on the worker, and publish to Play internal testing.
+- [ ] Android: make a release signing key, add its SHA-1 to an Android OAuth client in Google Cloud, and publish to Play internal testing.
 - [ ] Android: run a real hike on a Samsung phone to check it keeps tracking with the screen off.
 - [ ] Android: voice notes and photos in chat, the end-of-trip share card, and the brief and GPX for searchers are web-only for now.
-- [ ] Android: Sign in with Google. Use Credential Manager on the phone, and have the server check the ID token's signature against Google's keys. A web version was built and dropped on 2026-09-30, and nothing from it was merged.
 - [ ] iOS app, explorer side then operator side, with the Live Activity.
 - [ ] Apple Watch: an emergency alert from the wrist, so an explorer can call for help without taking the phone out, and see "are you okay?" and help alerts on the watch.
 - [ ] Fall detection, recording first, alerts after.

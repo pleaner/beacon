@@ -84,7 +84,9 @@ fun ProfileScreen(go: (Screen) -> Unit) {
     val askLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { locationOn = locationOn(context) }
     val work = rememberWork()
     val scope = rememberCoroutineScope()
-    val exit = { go(if (Store.token == null) Screen.Welcome else Screen.Home) }
+    // Google sign-in made the account and filled in the name and email. No phone yet means the explorer is new here.
+    val isNew = u.isNull("phone") || u.optString("phone").isEmpty()
+    val exit = { go(Screen.Home) }
     BackHandler { if (step > 0) step-- else exit() }
 
     @Composable
@@ -98,12 +100,11 @@ fun ProfileScreen(go: (Screen) -> Unit) {
         val fields = (FIELDS + listOf("phone_country", "emergency_phone_country")).map { it to v[it].orEmpty() } +
             (if (consent) listOf("consent_contact" to "1") else emptyList())
         work.run(scope, {
-            val r = Api.multipart("/api/profile", fields, listOfNotNull(photo?.let { "photo" to it }))
-            if (Store.token == null) { Store.token = r.getString("token"); Store.role = "explorer" }
+            Api.multipart("/api/profile", fields, listOfNotNull(photo?.let { "photo" to it }))
             Store.me = Api.get("/api/me")
         }) {
             Guardian.registerForPush(context)
-            go(if (u.length() == 0) Screen.HomeNotice("Profile saved. Allow notifications so the alarm can reach you.") else Screen.HomeNotice("Profile saved."))
+            go(if (isNew) Screen.HomeNotice("Profile saved. Allow notifications so the alarm can reach you.") else Screen.HomeNotice("Profile saved."))
         }.invokeOnCompletion {
             // The server turned down something from the first step, like the email address: show it there.
             if (work.error?.contains("email", ignoreCase = true) == true || work.error?.contains("required") == true) step = 0
@@ -128,7 +129,7 @@ fun ProfileScreen(go: (Screen) -> Unit) {
                     if (work.error == null) step++
                 }
                 if (step > 0) GButton("Skip for now", Btn.Ghost) { step++ }
-            } else GButton(if (work.busy) "Saving…" else if (Store.token == null) "Finish" else "Save", icon = "check", enabled = !work.busy) { save() }
+            } else GButton(if (work.busy) "Saving…" else if (isNew) "Finish" else "Save", icon = "check", enabled = !work.busy) { save() }
         },
     ) {
         ErrorBanner(work.error)

@@ -4,17 +4,19 @@ import type { User } from '../lib/db'
 import { ACTIVITIES, LANGUAGES, type Activity, type Language } from '../lib/constants'
 import { getChecklist, getSetting, listMessages, listPositions } from '../lib/db'
 import { requireRole } from '../lib/middleware'
+import { needsProfile } from './auth'
 import { canSeePhoto } from '../lib/photos'
 import { getOpenTrip, getTrip, lastTripForUser, listPets, previousGearPhotos, previousShoePhotos, routeSummary } from '../lib/trips'
 import { Layout } from '../views/layout'
 import { assetImage, fitMap, tileImages } from '../lib/map'
-import { ActiveTrip, Home, HelpScreen, MAP_BOX, NewTripForm, PetsPage, ProfileForm, TripDone, Welcome, type CardMap, type TripDraft } from '../views/explorer'
+import { ActiveTrip, Home, HelpScreen, MAP_BOX, NewTripForm, PetsPage, ProfileForm, TripDone, type CardMap, type TripDraft } from '../views/explorer'
 
 export const explorer = new Hono<AppEnv>()
 
 explorer.get('/', async (c) => {
   const user = c.var.user
-  if (!user) return c.html(<Layout title="Welcome" user={null} variant="bare" bodyClass="navy"><Welcome /></Layout>)
+  if (!user) return c.redirect('/login')
+  if (needsProfile(user)) return c.redirect('/profile')
   if (await getOpenTrip(c.env.DB, user.id)) return c.redirect('/trip')
   const last = await lastTripForUser(c.env.DB, user.id)
   const notice = c.req.query('saved') === '1' ? 'Profile saved.' : undefined
@@ -110,6 +112,7 @@ explorer.get('/pets', requireRole('explorer', 'operator', 'admin'), async (c) =>
 
 explorer.get('/profile', async (c) => {
   const user = c.var.user
+  if (!user) return c.redirect('/login')
   const page = profilePage(user, { vapid: c.env.VAPID_PUBLIC_KEY, lang: preferredLanguage(c.req.header('accept-language')) })
   return c.html(page)
 })

@@ -1,18 +1,18 @@
 import type { Context } from 'hono'
 import { Hono } from 'hono'
-import { setCookie } from 'hono/cookie'
 import type { AppEnv } from '../env'
-import { COOKIE_MAX_AGE, COOKIE_NAME, hashToken, newToken } from '../lib/auth'
+import { hashToken, newToken } from '../lib/auth'
 import { ACTIVITIES, AREAS, BLOOD_TYPES, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity, type Area } from '../lib/constants'
-import { addMessage, addSubscription, createUser, deleteSubscription, getChecklist, getMessageMedia, getSetting, getUserById, insertPositions, lastPositionsByTrip, listMessages, listPositions, MAX_MESSAGE, SIGNALS, updateUser, type User } from '../lib/db'
+import { addMessage, addSubscription, deleteSubscription, getChecklist, getMessageMedia, getSetting, getUserById, insertPositions, lastPositionsByTrip, listMessages, listPositions, MAX_MESSAGE, SIGNALS, updateUser, type User } from '../lib/db'
 import { done, num, readBody, requireApiRole, str, wantsJson, type Body } from '../lib/middleware'
 import { normalizePhone } from '../lib/phone'
+import { verifyGoogleToken } from '../lib/oauth'
 import { getPlaceLookup } from '../lib/places'
 import { saveMessageMedia, savePhoto } from '../lib/photos'
 import { FCM_PREFIX, getSender, helpPayload, pushToRoles, pushToUser } from '../lib/push'
 import { adminSetStatus, ADMIN_STATUSES, cancelHelp, extendTrip, getOpenTrip, getTrip, listCompanions, listOpenTrips, listPets, soundSiren, tripLine, tripPlace, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setPets, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
 import { newTripPage, profilePage } from './explorer'
-import { redeemLink } from './auth'
+import { needsProfile, userFor } from './auth'
 
 export const api = new Hono<AppEnv>()
 
@@ -60,7 +60,9 @@ function profileExtras(body: Body) {
 
 api.post('/profile', async (c) => {
   const user = c.var.user
-  if (user && user.role !== 'explorer') return c.json({ error: 'Forbidden' }, 403)
+  // Accounts come from signing in with Google or Apple; this only fills in the profile.
+  if (!user) return wantsJson(c) ? c.json({ error: 'Not signed in' }, 401) : c.redirect('/login', 303)
+  if (user.role !== 'explorer') return c.json({ error: 'Forbidden' }, 403)
   const body = await readBody(c)
   const name = str(body, 'name')
   const phone = normalizePhone(str(body, 'phone'), str(body, 'phone_country'))
@@ -85,26 +87,14 @@ api.post('/profile', async (c) => {
     // The free-text description is no longer on the form; keep whatever is stored unless a client sends one.
     ...('description' in body ? { description: str(body, 'description') } : {}),
   }
-  if (user) {
-    try {
-      const photo_key = await savePhoto(c.env.PHOTOS, user.id, body.photo)
-      await updateUser(c.env.DB, user.id, photo_key ? { ...fields, photo_key } : fields)
-      return done(c, { id: user.id }, '/?saved=1')
-    } catch (e) {
-      return failWith((e as Error).message, user)
-    }
-  }
-  const token = newToken()
-  const created = await createUser(c.env.DB, {
-    role: 'explorer', organisation: null, photo_key: null, description: null, ...fields, token_hash: await hashToken(token),
-  })
-  setCookie(c, COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: COOKIE_MAX_AGE })
+  // The first save after signing up goes on to the welcome tips; later saves just say "saved".
+  const next = needsProfile(user) ? '/?welcome=1' : '/?saved=1'
   try {
-    const photo_key = await savePhoto(c.env.PHOTOS, created.id, body.photo)
-    if (photo_key) await updateUser(c.env.DB, created.id, { photo_key })
-    return done(c, { id: created.id, token }, '/?welcome=1')
+    const photo_key = await savePhoto(c.env.PHOTOS, user.id, body.photo)
+    await updateUser(c.env.DB, user.id, photo_key ? { ...fields, photo_key } : fields)
+    return done(c, { id: user.id }, next)
   } catch (e) {
-    return failWith((e as Error).message, created)
+    return failWith((e as Error).message, user)
   }
 })
 
@@ -409,13 +399,20 @@ api.get('/me', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   })
 })
 
-// The app's half of the magic link: the operator taps the emailed link, the app opens and sends it here.
-api.post('/auth/verify', async (c) => {
-  const user = await redeemLink(c.env, str(await readBody(c), 'link') ?? '')
-  if (!user) return c.json({ error: 'That link has expired or was already used. Ask for a new one.' }, 400)
+// The Android app's Google sign-in: Credential Manager hands it an ID token, which is checked here.
+api.post('/auth/google', async (c) => {
+  const idToken = str(await readBody(c), 'id_token')
+  if (!idToken) return c.json({ error: 'No Google sign-in came through. Try again.' }, 400)
+  let user: User
+  try {
+    user = await userFor(c.env.DB, await verifyGoogleToken(c.env, idToken))
+  } catch (e) {
+    console.error('app sign-in failed', String(e))
+    return c.json({ error: "We couldn't sign you in with Google. Try again." }, 400)
+  }
   const token = newToken()
   await updateUser(c.env.DB, user.id, { app_token_hash: await hashToken(token) })
-  return c.json({ token, user: publicUser(user) })
+  return c.json({ token, user: publicUser(user), needs_profile: needsProfile(user) })
 })
 
 api.post('/logout', requireApiRole('explorer', 'operator', 'admin'), async (c) => {

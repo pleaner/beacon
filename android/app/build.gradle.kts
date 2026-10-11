@@ -17,6 +17,8 @@ android {
         versionCode = 1
         versionName = "0.1"
         buildConfigField("String", "API_URL", "\"${prop("guardianUrl")}\"")
+        // The server's web OAuth client: Google puts it in the ID token's audience.
+        buildConfigField("String", "GOOGLE_CLIENT_ID", "\"${prop("googleClientId")}\"")
         buildConfigField("String", "FIREBASE_APP_ID", "\"${prop("firebaseAppId")}\"")
         buildConfigField("String", "FIREBASE_API_KEY", "\"${prop("firebaseApiKey")}\"")
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${prop("firebaseProjectId")}\"")
@@ -43,4 +45,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("com.google.firebase:firebase-messaging:24.1.0")
+    implementation("androidx.credentials:credentials:1.6.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 }

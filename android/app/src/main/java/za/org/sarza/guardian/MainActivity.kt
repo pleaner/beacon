@@ -18,7 +18,6 @@ sealed interface Screen {
     data object Back : Screen
     data class NewTrip(val activity: String) : Screen
     data object Trip : Screen
-    data class SignIn(val link: String?) : Screen
     data object Board : Screen
     data class BoardTrip(val id: String) : Screen
 }
@@ -44,7 +43,6 @@ class MainActivity : ComponentActivity() {
                     Screen.Back -> BackScreen(go)
                     is Screen.NewTrip -> NewTripScreen(s.activity, go)
                     Screen.Trip -> TripScreen(go)
-                    is Screen.SignIn -> SignInScreen(s.link, go)
                     Screen.Board -> BoardScreen(go)
                     is Screen.BoardTrip -> BoardTripScreen(s.id, go)
                 }
@@ -65,16 +63,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handle(intent: Intent?) {
-        val link = intent?.data
-        if (link?.path == "/auth/verify") { screen = Screen.SignIn(link.toString()); return }
         val url = intent?.getStringExtra("url") ?: return
         Regex("^/board/trips/([^/?]+)").find(url)?.let { if (Store.role != "explorer" && Store.token != null) screen = Screen.BoardTrip(it.groupValues[1]) }
     }
 
     private fun back(s: Screen): Screen? = when (s) {
-        Screen.Profile -> if (Store.token == null) Screen.Welcome else Screen.Home
+        Screen.Profile -> Screen.Home
         is Screen.NewTrip -> Screen.Home
-        is Screen.SignIn -> if (Store.token == null) Screen.Welcome else null
         is Screen.BoardTrip -> Screen.Board
         else -> null
     }
@@ -83,6 +78,8 @@ class MainActivity : ComponentActivity() {
         fun home(): Screen = when {
             Store.token == null -> Screen.Welcome
             Store.role != "explorer" -> Screen.Board
+            // Signed in with Google but no phone yet: finish the profile first, like the web does.
+            Store.me?.optJSONObject("user")?.optString("phone").isNullOrEmpty() -> Screen.Profile
             Store.trip != null -> Screen.Trip
             else -> Screen.Home
         }

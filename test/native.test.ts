@@ -1,12 +1,12 @@
 import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import worker from '../src/index'
 import { listSubscriptionsForUser } from '../src/lib/db'
-import { lastMagicLinkForTests } from '../src/lib/email'
 import { setSenderForTests } from '../src/lib/push'
 import { startTrip } from '../src/lib/trips'
 import { cookieFor, fakeSender, makeExplorer, makeOperator } from './helpers'
+import { fakeProviders } from './fake-oauth'
 
 const BASE = 'https://beacon.test'
 
@@ -21,35 +21,55 @@ async function call(path: string, init: RequestInit & { bearer?: string; cookie?
 }
 const json = (body: unknown) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
 
-afterEach(() => setSenderForTests(null))
+let fake: Awaited<ReturnType<typeof fakeProviders>>
+beforeEach(async () => { fake = await fakeProviders() })
+afterEach(() => { setSenderForTests(null); fake.restore() })
 
 describe('native apps', () => {
-  it('signs up an explorer, returns a bearer token, and serves /api/me with it', async () => {
-    const res = await call('/api/profile', json({
+  it('signs a new explorer in with a Google ID token, then the profile and /api/me work with the bearer', async () => {
+    const res = await call('/api/auth/google', json({ id_token: await fake.idToken('google', { sub: 'g-anele', email: 'anele@example.test', name: 'Anele' }) }))
+    expect(res.status).toBe(200)
+    const { token, user, needs_profile } = (await res.json()) as { token: string; user: Record<string, unknown>; needs_profile: boolean }
+    expect(needs_profile).toBe(true)
+    expect(user.token_hash).toBeUndefined()
+    expect(user.app_token_hash).toBeUndefined()
+    const saved = await call('/api/profile', { bearer: token, ...json({
       name: 'Anele', phone: '0821234567', phone_country: '27', email: 'anele@example.test',
       emergency_name: 'Sipho', emergency_phone: '0831234567', emergency_phone_country: '27', consent_contact: '1',
-    }))
-    expect(res.status).toBe(200)
-    const { token } = (await res.json()) as { token: string }
+    }) })
+    expect(saved.status).toBe(200)
     const me = (await (await call('/api/me', { bearer: token })).json()) as Record<string, any>
-    expect(me.user.name).toBe('Anele')
-    expect(me.user.token_hash).toBeUndefined()
+    expect(me.user).toMatchObject({ name: 'Anele', phone: '+27821234567' })
     expect(me.trip).toBeNull()
     expect(me.checklists.hike.length).toBeGreaterThan(0)
     expect((await call('/api/me', { bearer: 'nope' })).status).toBe(401)
+    // Signing in again finds the same account, now with a profile.
+    const again = (await (await call('/api/auth/google', json({ id_token: await fake.idToken('google', { sub: 'g-anele', email: 'anele@example.test' }) }))).json()) as { user: { id: string }; needs_profile: boolean }
+    expect(again).toMatchObject({ user: { id: me.user.id }, needs_profile: false })
+  })
+
+  it('refuses a Google token for another app, an expired one, or one signed with an unknown key', async () => {
+    for (const id_token of [
+      await fake.idToken('google', { sub: 'g-1', aud: 'someone-elses-app' }),
+      await fake.idToken('google', { sub: 'g-1', exp: Math.floor(Date.now() / 1000) - 3600 }),
+      await fake.idToken('google', { sub: 'g-1' }, await fake.otherKey()),
+      'not.a.token',
+    ]) {
+      const res = await call('/api/auth/google', json({ id_token }))
+      expect(res.status).toBe(400)
+      expect(await res.json()).toHaveProperty('error')
+    }
+    expect((await call('/api/auth/google', json({}))).status).toBe(400)
   })
 
   it('signs an operator into the app without signing their browser out, and signs the app out alone', async () => {
     const o = await makeOperator({ email: 'app-ops@sarza.test' })
-    expect((await (await call('/auth/link', json({ email: 'app-ops@sarza.test' }))).json())).toEqual({ ok: true })
-    const link = lastMagicLinkForTests()!.url
-    const res = await call('/api/auth/verify', json({ link }))
+    const res = await call('/api/auth/google', json({ id_token: await fake.idToken('google', { sub: 'g-app-ops', email: 'app-ops@sarza.test' }) }))
     expect(res.status).toBe(200)
-    const { token } = (await res.json()) as { token: string }
+    const { token, needs_profile } = (await res.json()) as { token: string; needs_profile: boolean }
+    expect(needs_profile).toBe(false)
     expect((await call('/api/board', { bearer: token })).status).toBe(200)
     expect((await call('/board', { cookie: cookieFor(o.token) })).status).toBe(200)
-    // the link works once
-    expect((await call('/api/auth/verify', json({ link }))).status).toBe(400)
     await call('/api/logout', { bearer: token, method: 'POST' })
     expect((await call('/api/board', { bearer: token })).status).toBe(401)
     expect((await call('/board', { cookie: cookieFor(o.token) })).status).toBe(200)

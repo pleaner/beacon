@@ -16,7 +16,7 @@ Guardian gets one native app per platform, Swift for iOS and Kotlin for Android.
 
 ## Server changes
 
-- Sign-in. The magic link opens the app through a Universal Link on iOS and an App Link on Android. The app exchanges it for a session token and sends that as a bearer header.
+- Sign-in. Google (and Apple on iOS) through the platform's own sign-in sheet. The app sends the ID token to the server, which checks it and returns a session token for the bearer header.
 - Native push. The server stores APNs and FCM tokens per device and sends through both with signed JWTs. Each device has its own token, which fixes the web-push bug where a phone could only get alerts for one account.
 - The position reply carries pending commands, starting with `siren`.
 - JSON endpoints for the operator board and trip detail. The explorer endpoints in `src/routes/api.tsx` already exist.

@@ -1,6 +1,8 @@
+import { raw } from 'hono/html'
 import type { FC } from 'hono/jsx'
 import { ACTIVITIES, BLOOD_TYPES, COUNTRY_CODES, EXTEND_OPTIONS_MINUTES, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity } from '../lib/constants'
 import type { Message, Position, User } from '../lib/db'
+import type { Provider } from '../lib/oauth'
 import { formatPhone, splitPhone } from '../lib/phone'
 import { activityName, toLocalInput, tripLine, tripPlace, type RoutePoint, type Trip } from '../lib/trips'
 import { Chat } from './board'
@@ -19,19 +21,31 @@ const opts = (xs: readonly string[]) => xs.map((x) => ({ value: x, label: x }))
 // ---------- welcome ----------
 
 // The front door for anyone without a cookie. Says what Guardian is before it asks for a name.
-export const Welcome: FC = () => (
+// The front door for everyone, explorers and operators: sign in with Google or Apple.
+export const Welcome: FC<{ providers: Provider[]; error?: string }> = ({ providers, error }) => (
   <main class="signin">
     <img src="/sarza-logo.png" alt="SARZA Search &amp; Rescue" style="width: 132px; height: 132px; align-self: center;" />
     <div class="stack" style="gap: 10px;">
       <h1 class="display">Guardian</h1>
       <p class="lead">File a plan before you head out. If you're not back when you expect to be, we'll check in on you. If you don't respond, or call for help, SARZA will help you get home safe.</p>
     </div>
-    <a class="btn yellow big" href="/profile">Get started</a>
-    <p style="margin: 0; font-size: 14px;">Turn a bad day into a great story.</p>
-    <div class="grow"></div>
-    <p style="margin: 0; font-size: 14px;"><a href="/login" style="color: inherit;">I'm a SARZA operator</a></p>
+    {error && <div class="banner error" role="alert">{error}</div>}
+    <div class="stack" style="gap: 12px;">
+      {providers.includes('google') && (
+        <a class="btn white-ink big" href="/auth/google">{raw(GOOGLE_G)}Continue with Google</a>
+      )}
+      {providers.includes('apple') && (
+        <a class="btn black big" href="/auth/apple">{raw(APPLE_MARK)}Continue with Apple</a>
+      )}
+      {providers.length === 0 && <div class="banner warn" role="status">Sign-in isn't set up on this server yet.</div>}
+    </div>
+    <p style="margin: 0; font-size: 14px;">Turn a bad day into a great story. SARZA operators sign in here too.</p>
   </main>
 )
+
+// Brand marks the providers ask sign-in buttons to show.
+const GOOGLE_G = '<svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.2-8.5 2.2-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>'
+const APPLE_MARK = '<svg width="20" height="22" viewBox="0 0 17 20" aria-hidden="true"><path fill="currentColor" d="M14.1 10.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9C3.6 4.8 2 5.8 1.1 7.4c-1.9 3.2-.5 8 1.3 10.6.9 1.3 1.9 2.7 3.3 2.6 1.3-.1 1.8-.8 3.4-.8 1.6 0 2 .8 3.4.8 1.4 0 2.3-1.3 3.2-2.6 1-1.5 1.4-2.9 1.4-3-.1 0-2.9-1.1-3-4.4zM11.5 2.9c.7-.9 1.2-2.1 1.1-3.3-1 0-2.3.7-3 1.6-.7.8-1.3 2-1.1 3.2 1.1.1 2.3-.6 3-1.5z"/></svg>'
 
 // ---------- profile (5 steps) ----------
 
@@ -122,7 +136,7 @@ export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partia
         </Step>
 
         <Step title="Make sure we can reach you" lead="Guardian needs these to work. Without them, we can't tell you when you're overdue or find you when you need help."
-          submit={<button class="btn" type="submit"><Icon name="check" size={24} stroke={2.4} />{user ? 'Save' : 'Finish'}</button>}>
+          submit={<button class="btn" type="submit"><Icon name="check" size={24} stroke={2.4} />{user?.phone ? 'Save' : 'Finish'}</button>}>
           <div class="stack">
             <div class="setup" data-standalone>
               <span class="n">1</span>

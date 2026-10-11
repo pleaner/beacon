@@ -17,24 +17,17 @@ Beacon is a Hono worker on Cloudflare. The surface is the browser: the explorer 
 
 ## Sign in
 
-Explorers have no login, only a cookie, so a fresh browser profile is a fresh explorer. Operators and admins need a magic link. Mint one without email:
+Everyone signs in with Google or Apple, which a headless browser can't do. Make a session by hand instead: give a user a token hash and set the matching cookie.
 
-    U="<user id from the users table>"
-    E=$(node -e "console.log(Date.now()+900000)")
-    wrangler d1 execute DB --local --command "UPDATE users SET magic_link_expires=$E WHERE id='$U'"
-    SECRET=$(grep '^SESSION_SECRET=' .dev.vars | cut -d= -f2-)
-    node -e "
-    const c=require('crypto');const [s,u,e]=process.argv.slice(1);const b=x=>Buffer.from(x).toString('base64url');
-    const p=b(u+':'+e);console.log('http://localhost:8787/auth/verify?t='+p+'.'+b(c.createHmac('sha256',s).update(p).digest()));
-    " "$SECRET" "$U" "$E"
+    T=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))")
+    H=$(node -e "console.log(require('crypto').createHash('sha256').update(process.argv[1]).digest('hex'))" "$T")
+    wrangler d1 execute DB --local --command "UPDATE users SET token_hash='$H' WHERE id='<user id>'"
 
-A link works once and only if its expiry matches `users.magic_link_expires`, so mint a new one each time. Opening the link shows a confirm page, and the sign-in happens when you press its button.
-
-`.dev.vars` has a live `RESEND_API_KEY`, so `POST /auth/link` sends a real email. Mint the link instead.
+Then in Playwright, `context.addCookies([{ name: 'beacon', value: T, domain: 'localhost', path: '/' }])`. For a brand-new explorer, insert a user with `phone=''` first: an empty phone is how the app knows to send them to the profile form.
 
 ## Drive
 
-Explorer flow, all through clicks: `/profile` is 5 steps, then pick an activity on `/`, then `/trip/new` is 6 steps. Activity keys are hike, run, climb, paraglide, mtb, other.
+Explorer flow, all through clicks: `/profile` is 5 steps (it needs a signed-in user), then pick an activity on `/`, then `/trip/new` is 6 steps. Activity keys are hike, run, climb, paraglide, mtb, other.
 
 Slide-to-confirm (help, cancel a draft trip) ignores taps. `dragOnly` in `public/app.js` wants a pointerdown starting under value 25 and a release past 90, so drive it with a real mouse drag:
 

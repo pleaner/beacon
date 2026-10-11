@@ -11,13 +11,13 @@ export default defineConfig(async () => {
         miniflare: {
           bindings: {
             TEST_MIGRATIONS: migrations,
-            SESSION_SECRET: 'test-secret',
+            GOOGLE_CLIENT_ID: 'google-web-client',
+            GOOGLE_CLIENT_SECRET: 'google-secret',
             VAPID_PUBLIC_KEY: 'BBBB',
             VAPID_PRIVATE_KEY: 'cccc',
             // No place lookups in tests; tests that need one install a fake with setPlaceLookupForTests.
             GEOCODE_URL: '',
             MAP_TILES_URL: '',
-            // RESEND_API_KEY is left unset on purpose: without it the email helper logs instead of calling Resend.
           },
         },
       }),

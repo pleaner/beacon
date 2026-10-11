@@ -1,7 +1,6 @@
 package za.org.sarza.guardian
 
 import android.graphics.BitmapFactory
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -50,8 +49,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -66,60 +63,6 @@ private val Z9 = Color(0xFF09090B)
 private val ZM = Color(0xFF71717A)
 private val ZB = Color(0xFFE4E4E7)
 private val ZA = Color(0xFFF4F4F5)
-
-@Composable
-fun SignInScreen(link: String?, go: (Screen) -> Unit) {
-    val context = LocalContext.current
-    var email by remember { mutableStateOf("") }
-    var sent by remember { mutableStateOf(false) }
-    var pasted by remember { mutableStateOf("") }
-    val work = rememberWork()
-    val scope = rememberCoroutineScope()
-    fun verify(l: String) = work.run(scope, {
-        val r = Api.post("/api/auth/verify", JSONObject().put("link", l.trim()))
-        Store.signOut()
-        Store.token = r.getString("token")
-        Store.role = r.getJSONObject("user").getString("role")
-        Store.me = JSONObject().put("user", r.getJSONObject("user"))
-    }) {
-        Guardian.registerForPush(context)
-        go(Screen.Board)
-    }
-    LaunchedEffect(link) { if (link != null) verify(link) }
-    BackHandler { go(Screen.Welcome) }
-    Page(Navy, gap = 0.dp, top = 56.dp) {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Logo(132.dp)
-            DisplayText("Operator sign in", Color.White, 44.sp, Modifier.padding(top = 16.dp), TextAlign.Center)
-            Text("Explorers don't sign in. This is for SARZA operators.", color = Color.White.copy(alpha = .9f), textAlign = TextAlign.Center)
-        }
-        Column(Modifier.padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            ErrorBanner(work.error)
-            when {
-                link != null && work.busy -> Text("Signing you in…", color = Color.White)
-                !sent -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Email", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        GInput(email, { email = it }, "you@sarza.org.za", type = KeyboardType.Email, white = true)
-                    }
-                    GButton(if (work.busy) "Sending…" else "Send me a link", Btn.Yellow, "mail", enabled = !work.busy) {
-                        work.run(scope, { Api.post("/auth/link", JSONObject().put("email", email.trim())) }) { sent = true }
-                    }
-                    Text("The link works once, for 15 minutes. Open it on this phone and Guardian signs you in.",
-                        Modifier.fillMaxWidth(), color = Color.White.copy(alpha = .85f), fontSize = 14.sp, textAlign = TextAlign.Center)
-                }
-                else -> {
-                    Banner(NavyT, Navy, "mail") { Text("Check your email and tap the link on this phone. It works once, for 15 minutes.", fontWeight = FontWeight.SemiBold) }
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("If it opens in the browser instead, paste the link here", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        GInput(pasted, { pasted = it }, "https://guardian.pleaner.com/auth/verify?t=…", white = true)
-                    }
-                    GButton("Sign in", Btn.Yellow, enabled = !work.busy && pasted.isNotBlank()) { verify(pasted) }
-                }
-            }
-        }
-    }
-}
 
 private val TABS = listOf("" to "All", "help" to "Help", "overdue" to "Overdue", "active" to "Active")
 

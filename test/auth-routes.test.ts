@@ -1,145 +1,170 @@
 import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import worker from '../src/index'
-import { hashToken, signMagicLink } from '../src/lib/auth'
-import { getUserByTokenHash } from '../src/lib/db'
-import { lastMagicLinkForTests } from '../src/lib/email'
+import { hashToken } from '../src/lib/auth'
+import { getUserById, getUserByTokenHash } from '../src/lib/db'
 import { cookieFor, makeExplorer, makeOperator } from './helpers'
+import { fakeProviders } from './fake-oauth'
 
 const BASE = 'https://beacon.test'
-const form = (fields: Record<string, string>) => ({
-  method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields), redirect: 'manual' as const,
-})
+let fake: Awaited<ReturnType<typeof fakeProviders>>
+beforeEach(async () => { fake = await fakeProviders() })
+afterEach(() => fake.restore())
 
-describe('login flow', () => {
-  it('renders the login form, and redirects a signed-in operator to the board', async () => {
+// Starts a sign-in the way a browser does, and returns what the callback needs.
+async function begin(provider: 'google' | 'apple', e: Env = env) {
+  const ctx = createExecutionContext()
+  const res = await worker.fetch(new Request(`${BASE}/auth/${provider}`, { redirect: 'manual' }), e, ctx)
+  await waitOnExecutionContext(ctx)
+  expect(res.status).toBe(302)
+  const stateCookie = (res.headers.get('set-cookie') ?? '').match(/oauth=([^;]+)/)![1]
+  const [, state, nonce] = stateCookie.split('.')
+  return { location: res.headers.get('location')!, state, nonce, cookie: `oauth=${stateCookie}` }
+}
+
+async function googleCallback(q: string, cookie: string) {
+  return exports.default.fetch(`${BASE}/auth/google/callback?${q}`, { headers: { cookie }, redirect: 'manual' })
+}
+const sessionFrom = (res: Response) => (res.headers.get('set-cookie') ?? '').match(/beacon=([^;]+)/)?.[1]
+
+describe('sign in with Google on the web', () => {
+  it('shows the Google button, no Apple button without its keys, and sends a signed-in operator to the board', async () => {
     let res = await exports.default.fetch(`${BASE}/login`)
-    expect(await res.text()).toContain('name="email"')
+    const html = await res.text()
+    expect(html).toContain('href="/auth/google"')
+    expect(html).not.toContain('href="/auth/apple"')
+    expect(html).not.toContain('name="email"')
+    expect((await exports.default.fetch(`${BASE}/auth/apple`)).status).toBe(404)
     const o = await makeOperator()
     res = await exports.default.fetch(`${BASE}/login`, { headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
     expect(res.headers.get('location')).toBe('/board')
   })
 
-  it('emails a link for a known operator and the link signs them in', async () => {
+  it('sends a new person to Google, then makes them an explorer and asks for their profile', async () => {
+    const s = await begin('google')
+    const url = new URL(s.location)
+    expect(url.origin + url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth')
+    expect(url.searchParams.get('client_id')).toBe('google-web-client')
+    expect(url.searchParams.get('state')).toBe(s.state)
+    expect(url.searchParams.get('nonce')).toBe(s.nonce)
+    expect(url.searchParams.get('redirect_uri')).toBe(`${env.APP_URL}/auth/google/callback`)
+    fake.next(await fake.idToken('google', { sub: 'g-new', email: 'Ayanda@Example.com', name: 'Ayanda Zulu', nonce: s.nonce }))
+    const res = await googleCallback(`code=abc&state=${s.state}`, s.cookie)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/profile')
+    expect(fake.tokenRequests.at(-1)?.get('code')).toBe('abc')
+    expect(fake.tokenRequests.at(-1)?.get('client_secret')).toBe('google-secret')
+    const user = (await getUserByTokenHash(env.DB, await hashToken(sessionFrom(res)!)))!
+    expect(user).toMatchObject({ role: 'explorer', name: 'Ayanda Zulu', email: 'ayanda@example.com', phone: '', google_sub: 'g-new' })
+    // Home sends them back to finish the profile until it has a phone number.
+    const home = await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(sessionFrom(res)!) }, redirect: 'manual' })
+    expect(home.headers.get('location')).toBe('/profile')
+  })
+
+  it('finds an operator by their verified email, links the account, and recognises it later by Google id alone', async () => {
     const o = await makeOperator({ email: 'ops@sarza.test' })
-    let res = await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'OPS@sarza.test' }))
-    expect(res.status).toBe(200)
-    expect(await res.text()).toContain('Check your email')
-    const link = lastMagicLinkForTests()
-    expect(link?.to).toBe('ops@sarza.test')
-    expect(link?.url).toContain('/auth/verify?t=')
-    res = await exports.default.fetch(link!.url, { redirect: 'manual' })
-    expect(res.status).toBe(200)
-    expect(res.headers.get('set-cookie')).toBeNull()
-    expect(await res.text()).toContain('name="link"')
-    res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: link!.url }))
-    expect(res.status).toBe(302)
+    let s = await begin('google')
+    fake.next(await fake.idToken('google', { sub: 'g-ops', email: 'OPS@sarza.test', nonce: s.nonce }))
+    let res = await googleCallback(`code=c1&state=${s.state}`, s.cookie)
     expect(res.headers.get('location')).toBe('/board')
-    const token = (res.headers.get('set-cookie') ?? '').match(/beacon=([^;]+)/)![1]
-    expect((await getUserByTokenHash(env.DB, await hashToken(token)))?.id).toBe(o.user.id)
-    expect(token).not.toBe(o.token)
+    expect((await getUserByTokenHash(env.DB, await hashToken(sessionFrom(res)!)))?.id).toBe(o.user.id)
+    expect((await getUserById(env.DB, o.user.id))?.google_sub).toBe('g-ops')
+    // A changed Google email still reaches the same account.
+    s = await begin('google')
+    fake.next(await fake.idToken('google', { sub: 'g-ops', email: 'renamed@sarza.test', nonce: s.nonce }))
+    res = await googleCallback(`code=c2&state=${s.state}`, s.cookie)
+    expect((await getUserByTokenHash(env.DB, await hashToken(sessionFrom(res)!)))?.id).toBe(o.user.id)
   })
 
-  it('says the same thing for an unknown email and sends nothing', async () => {
-    const before = lastMagicLinkForTests()
-    const res = await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'nobody@sarza.test' }))
-    expect(res.status).toBe(200)
-    expect(await res.text()).toContain('Check your email')
-    expect(lastMagicLinkForTests()).toBe(before)
-  })
-
-  it('does not send links to explorers', async () => {
-    await makeExplorer({ email: 'hiker@sarza.test' })
-    const before = lastMagicLinkForTests()
-    await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'hiker@sarza.test' }))
-    expect(lastMagicLinkForTests()).toBe(before)
-  })
-
-  it('still returns the confirmation page when Resend errors', async () => {
-    const o = await makeOperator({ email: 'flaky@sarza.test' })
-    const originalFetch = globalThis.fetch
-    globalThis.fetch = (async () => new Response('nope', { status: 500 })) as typeof fetch
-    try {
-      const testEnv = { ...env, RESEND_API_KEY: 'test-key' }
-      const ctx = createExecutionContext()
-      const res = await worker.fetch(new Request(`${BASE}/auth/link`, form({ email: o.user.email! })), testEnv, ctx)
-      expect(res.status).toBe(200)
-      expect(await res.text()).toContain('Check your email')
-      await waitOnExecutionContext(ctx)
-    } finally {
-      globalThis.fetch = originalFetch
-    }
-  })
-
-  it('rejects a bad link', async () => {
-    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: 'nope' }))
-    expect(res.status).toBe(400)
-    expect(await res.text()).toContain('expired')
-  })
-
-  it('rejects a validly signed link for an explorer, and sets no cookie', async () => {
-    const e = await makeExplorer()
-    const token = await signMagicLink(env.SESSION_SECRET, e.user.id, Date.now() + 60_000)
-    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: token }))
-    expect(res.status).toBe(400)
-    expect(res.headers.get('set-cookie')).toBeNull()
-  })
-
-  it('signs in from the pasted-link form (POST /auth/verify)', async () => {
-    const o = await makeOperator({ email: 'paste@sarza.test' })
-    await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'paste@sarza.test' }))
-    const link = lastMagicLinkForTests()!
-    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: link.url }))
-    expect(res.status).toBe(302)
-    expect(res.headers.get('location')).toBe('/board')
-    const token = (res.headers.get('set-cookie') ?? '').match(/beacon=([^;]+)/)![1]
-    expect((await getUserByTokenHash(env.DB, await hashToken(token)))?.id).toBe(o.user.id)
-  })
-
-  it('a link works once', async () => {
-    await makeOperator({ email: 'once@sarza.test' })
-    await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'once@sarza.test' }))
-    const link = lastMagicLinkForTests()!
-    expect((await exports.default.fetch(`${BASE}/auth/verify`, form({ link: link.url }))).status).toBe(302)
-    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: link.url }))
-    expect(res.status).toBe(400)
-    expect(res.headers.get('set-cookie')).toBeNull()
-  })
-
-  it('sends at most one link a minute per operator', async () => {
-    await makeOperator({ email: 'spam@sarza.test' })
-    await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'spam@sarza.test' }))
-    const first = lastMagicLinkForTests()
-    const res = await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'spam@sarza.test' }))
-    expect(await res.text()).toContain('Check your email')
-    expect(lastMagicLinkForTests()).toBe(first)
-  })
-
-  it('rejects garbage pasted into the link form', async () => {
-    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: 'not a link or token' }))
-    expect(res.status).toBe(400)
-  })
-
-  it('logout clears the cookie', async () => {
-    const o = await makeOperator()
-    const res = await exports.default.fetch(`${BASE}/logout`, { method: 'POST', headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
-    expect(res.headers.get('location')).toBe('/login')
-    expect(res.headers.get('set-cookie')).toMatch(/beacon=;|Max-Age=0/)
-  })
-
-  it('logout sends an explorer to the welcome screen, not the operator sign-in', async () => {
-    const e = await makeExplorer()
-    const res = await exports.default.fetch(`${BASE}/logout`, { method: 'POST', headers: { cookie: cookieFor(e.token) }, redirect: 'manual' })
+  it('brings back an existing explorer by email, keeping their profile', async () => {
+    const e = await makeExplorer({ name: 'Thandi', email: 'thandi@example.com' })
+    const s = await begin('google')
+    fake.next(await fake.idToken('google', { sub: 'g-thandi', email: 'thandi@example.com', nonce: s.nonce }))
+    const res = await googleCallback(`code=c&state=${s.state}`, s.cookie)
     expect(res.headers.get('location')).toBe('/')
-    expect(res.headers.get('set-cookie')).toMatch(/beacon=;|Max-Age=0/)
+    expect((await getUserByTokenHash(env.DB, await hashToken(sessionFrom(res)!)))).toMatchObject({ id: e.user.id, name: 'Thandi' })
   })
 
-  it('logout revokes the token, so the old cookie no longer signs anyone in', async () => {
-    const o = await makeOperator()
-    await exports.default.fetch(`${BASE}/logout`, { method: 'POST', headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
-    const res = await exports.default.fetch(`${BASE}/login`, { headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
+  it('never links an unverified email to an existing account', async () => {
+    const o = await makeOperator({ email: 'boss@sarza.test' })
+    const s = await begin('google')
+    fake.next(await fake.idToken('google', { sub: 'g-sneaky', email: 'boss@sarza.test', email_verified: false, nonce: s.nonce }))
+    const res = await googleCallback(`code=c&state=${s.state}`, s.cookie)
+    expect(res.headers.get('location')).toBe('/profile')
+    const user = (await getUserByTokenHash(env.DB, await hashToken(sessionFrom(res)!)))!
+    expect(user.id).not.toBe(o.user.id)
+    expect(user.role).toBe('explorer')
+  })
+
+  it('refuses a callback without the matching state cookie, a wrong nonce, or a forged token', async () => {
+    let s = await begin('google')
+    fake.next(await fake.idToken('google', { sub: 'g-x', email: 'x@example.com', nonce: s.nonce }))
+    let res = await googleCallback(`code=c&state=${s.state}`, '')
+    expect(res.status).toBe(400)
+    expect(sessionFrom(res)).toBeUndefined()
+    res = await googleCallback(`code=c&state=not-it`, s.cookie)
+    expect(res.status).toBe(400)
+
+    s = await begin('google')
+    fake.next(await fake.idToken('google', { sub: 'g-x', email: 'x@example.com', nonce: 'replayed' }))
+    res = await googleCallback(`code=c&state=${s.state}`, s.cookie)
+    expect(res.status).toBe(400)
+    expect(sessionFrom(res)).toBeUndefined()
+
+    s = await begin('google')
+    fake.next(await fake.idToken('google', { sub: 'g-x', email: 'x@example.com', nonce: s.nonce }, await fake.otherKey()))
+    res = await googleCallback(`code=c&state=${s.state}`, s.cookie)
+    expect(res.status).toBe(400)
+    expect(await res.text()).toContain("couldn&#39;t sign you in")
+  })
+
+  it('shows the buttons again, without an error, when the person cancels at Google', async () => {
+    const s = await begin('google')
+    const res = await googleCallback(`error=access_denied&state=${s.state}`, s.cookie)
     expect(res.status).toBe(200)
-    expect(await res.text()).toContain('name="email"')
+    expect(await res.text()).not.toContain('role="alert"')
+  })
+})
+
+describe('sign in with Apple on the web', () => {
+  it('shows the button once its keys are set, signs the client secret, and takes the name from the first sign-in', async () => {
+    const ec = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair
+    const pkcs8 = btoa(String.fromCharCode(...new Uint8Array((await crypto.subtle.exportKey('pkcs8', ec.privateKey)) as ArrayBuffer)))
+    const apple = {
+      ...env, APPLE_SERVICES_ID: 'za.org.sarza.guardian.web', APPLE_TEAM_ID: 'TEAM123', APPLE_KEY_ID: 'KEY123',
+      APPLE_PRIVATE_KEY: `-----BEGIN PRIVATE KEY-----\n${pkcs8}\n-----END PRIVATE KEY-----`,
+    }
+    const ctx = createExecutionContext()
+    const login = await worker.fetch(new Request(`${BASE}/login`), apple, ctx)
+    expect(await login.text()).toContain('href="/auth/apple"')
+
+    const s = await begin('apple', apple)
+    expect(new URL(s.location).searchParams.get('response_mode')).toBe('form_post')
+    fake.next(await fake.idToken('apple', { sub: 'a-1', email: 'relay@privaterelay.appleid.com', email_verified: 'true', nonce: s.nonce }))
+    const body = new URLSearchParams({ code: 'apple-code', state: s.state, user: JSON.stringify({ name: { firstName: 'Lwazi', lastName: 'Ndlovu' } }) })
+    const res = await worker.fetch(new Request(`${BASE}/auth/apple/callback`, {
+      method: 'POST', body, headers: { cookie: s.cookie, 'content-type': 'application/x-www-form-urlencoded' }, redirect: 'manual',
+    }), apple, ctx)
+    await waitOnExecutionContext(ctx)
+    expect(res.headers.get('location')).toBe('/profile')
+    const secret = fake.tokenRequests.at(-1)!.get('client_secret')!
+    const [head, claims] = secret.split('.').slice(0, 2).map((p) => JSON.parse(atob(p.replace(/-/g, '+').replace(/_/g, '/'))))
+    expect(head).toMatchObject({ alg: 'ES256', kid: 'KEY123' })
+    expect(claims).toMatchObject({ iss: 'TEAM123', sub: 'za.org.sarza.guardian.web', aud: 'https://appleid.apple.com' })
+    const user = (await getUserByTokenHash(env.DB, await hashToken(sessionFrom(res)!)))!
+    expect(user).toMatchObject({ name: 'Lwazi Ndlovu', apple_sub: 'a-1', role: 'explorer' })
+  })
+})
+
+describe('logout', () => {
+  it('clears the cookie and revokes the token, for operators and explorers alike', async () => {
+    for (const p of [await makeOperator(), await makeExplorer()]) {
+      const res = await exports.default.fetch(`${BASE}/logout`, { method: 'POST', headers: { cookie: cookieFor(p.token) }, redirect: 'manual' })
+      expect(res.headers.get('location')).toBe('/login')
+      expect(res.headers.get('set-cookie')).toMatch(/beacon=;|Max-Age=0/)
+      const again = await exports.default.fetch(`${BASE}/login`, { headers: { cookie: cookieFor(p.token) }, redirect: 'manual' })
+      expect(again.status).toBe(200)
+    }
   })
 })

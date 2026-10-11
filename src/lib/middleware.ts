@@ -15,7 +15,7 @@ export const loadUser = createMiddleware<AppEnv>(async (c, next) => {
 export function requireRole(...roles: Role[]) {
   return createMiddleware<AppEnv>(async (c, next) => {
     const user = c.var.user
-    if (!user) return c.redirect(roles.includes('explorer') ? '/profile' : '/login')
+    if (!user) return c.redirect('/login')
     if (!roles.includes(user.role)) return c.text('Forbidden', 403)
     await next()
   })
