@@ -29,6 +29,9 @@ object Alarm {
     private const val RATE = 22_050
     private var track: AudioTrack? = null
     private var restoreVolume = -1
+    // Since Android 12 a Vibrator only cancels what it started itself, and each context hands out its own. A push
+    // starts the buzz from AlarmService and opening the app stops it from MainActivity, so keep the one that started it.
+    private var buzzer: Vibrator? = null
     private val handler = Handler(Looper.getMainLooper())
 
     // From the trip service, which already keeps the app alive. Pushes go through AlarmService instead.
@@ -92,16 +95,19 @@ object Alarm {
                 setLoopPoints(0, samples.size, -1)
                 play()
             }
-        c.getSystemService(Vibrator::class.java).vibrate(VibrationEffect.createWaveform(longArrayOf(0, 800, 400), 0))
+        buzzer = c.applicationContext.getSystemService(Vibrator::class.java).also {
+            it.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 800, 400), 0))
+        }
     }
 
     @Synchronized private fun silence(c: Context) {
         handler.removeCallbacksAndMessages(null)
+        buzzer?.cancel()
+        buzzer = null
         val t = track ?: return
         track = null
         t.stop()
         t.release()
-        c.getSystemService(Vibrator::class.java).cancel()
         if (restoreVolume >= 0) runCatching {
             c.getSystemService(AudioManager::class.java).setStreamVolume(AudioManager.STREAM_ALARM, restoreVolume, 0)
         }
