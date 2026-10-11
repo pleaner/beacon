@@ -167,7 +167,9 @@ fun HomeScreen(go: (Screen) -> Unit, notice: String? = null) {
         if (Store.trip != null) go(Screen.Trip)
     }
     val activities = me?.optJSONObject("activities") ?: JSONObject()
-    AppPage(menu = listOf("Your profile" to { go(Screen.Profile) })) {
+    val menu = listOf("Your profile" to { go(Screen.Profile) }) +
+        (if (Store.role != "explorer") listOf("Operator board" to { go(Screen.Board) }) else emptyList())
+    AppPage(menu = menu) {
         DisplayText("Hi ${me?.optJSONObject("user")?.optString("name")?.substringBefore(' ').orEmpty()}", size = 44.sp)
         if (notice != null) Banner(NavyT) { Text(notice, fontWeight = FontWeight.SemiBold) }
         if (alertsOff) Banner(YellowT, Ink, "bell", YellowLine) {

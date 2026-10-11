@@ -3,7 +3,8 @@
 Native apps, in order. See `docs/native-plan.md`.
 
 - [ ] Register Apple Developer and Google Play accounts to SARZA as an organisation (needs a D-U-N-S number).
-- [ ] Sign-in: create the Google Web OAuth client and set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the worker before the next deploy.
+- [x] Sign-in: Google Web OAuth client set on the worker; live since 2026-10-11.
+- [ ] Sign-in: check each operator's email is a Google account (or change it under Admin), so they reach the board rather than a new explorer account.
 - [ ] Sign-in: once the Apple account exists, make a Services ID and key and set the four `APPLE_*` secrets; the Apple button appears by itself. Sign in with Apple on Android comes after.
 - [ ] Request the Critical Alerts entitlement from Apple.
 - [x] Server: sign-in link that opens the app and returns a bearer token.

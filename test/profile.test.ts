@@ -2,7 +2,7 @@ import { env, exports } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
 import { getUserByTokenHash } from '../src/lib/db'
 import { hashToken } from '../src/lib/auth'
-import { cookieFor, makeExplorer, makeOperator } from './helpers'
+import { cookieFor, makeAdmin, makeExplorer, makeOperator } from './helpers'
 
 const BASE = 'https://beacon.test'
 
@@ -214,5 +214,36 @@ describe('GET /photos/*', () => {
     const res = await exports.default.fetch(`${BASE}/photos/users/x/y.jpg`, { redirect: 'manual' })
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toBe('/login')
+  })
+})
+
+describe('admins on activities', () => {
+  it('lets an admin keep a profile and plan from the activity home, but not an operator', async () => {
+    const a = await makeAdmin()
+    let res = await exports.default.fetch(`${BASE}/api/profile`, {
+      method: 'POST', headers: { cookie: cookieFor(a.token), 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Admin Hiker', phone: '+27820000009', email: a.user.email, emergency_name: 'Zan', emergency_phone: '+27830000009' }),
+    })
+    expect(res.status).toBe(200)
+    expect((await getUserByTokenHash(env.DB, await hashToken(a.token)))).toMatchObject({ role: 'admin', name: 'Admin Hiker', emergency_name: 'Zan' })
+    const home = await (await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(a.token) } })).text()
+    expect(home).toContain('href="/trip/new?activity=hike"')
+    expect(home).toContain('href="/board"')
+
+    const o = await makeOperator()
+    res = await exports.default.fetch(`${BASE}/api/profile`, {
+      method: 'POST', headers: { cookie: cookieFor(o.token), 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Op', phone: '+27820000008', email: o.user.email }),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('puts My activities in the admin menu only', async () => {
+    const a = await makeAdmin()
+    const o = await makeOperator()
+    const adminBoard = await (await exports.default.fetch(`${BASE}/board`, { headers: { cookie: cookieFor(a.token) } })).text()
+    expect(adminBoard).toMatch(/<a class="item" href="\/"[^>]*>.*My activities/s)
+    const opBoard = await (await exports.default.fetch(`${BASE}/board`, { headers: { cookie: cookieFor(o.token) } })).text()
+    expect(opBoard).not.toContain('My activities')
   })
 })

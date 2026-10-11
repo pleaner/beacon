@@ -62,7 +62,8 @@ api.post('/profile', async (c) => {
   const user = c.var.user
   // Accounts come from signing in with Google or Apple; this only fills in the profile.
   if (!user) return wantsJson(c) ? c.json({ error: 'Not signed in' }, 401) : c.redirect('/login', 303)
-  if (user.role !== 'explorer') return c.json({ error: 'Forbidden' }, 403)
+  // Admins plan their own trips too, so they keep a profile; operators only run the board.
+  if (user.role === 'operator') return c.json({ error: 'Forbidden' }, 403)
   const body = await readBody(c)
   const name = str(body, 'name')
   const phone = normalizePhone(str(body, 'phone'), str(body, 'phone_country'))
