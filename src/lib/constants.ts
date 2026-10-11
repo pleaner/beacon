@@ -26,7 +26,7 @@ export const GEAR: Partial<Record<Activity, { label: string; hint: string }>> = 
   mtb: { label: 'Your bike', hint: 'A bike on its side is often easier to spot than the rider.' },
 }
 
-export const GENDERS = ['Female', 'Male', 'Non-binary', 'Prefer to self-describe', 'Prefer not to say'] as const
+export const GENDERS = ['Female', 'Male', 'Non-binary'] as const
 
 export const BLOOD_TYPES = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'] as const
 

@@ -35,7 +35,7 @@ export const Welcome: FC = () => (
 
 // ---------- profile (5 steps) ----------
 
-export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partial<User> }> = ({ user, error, draft }) => {
+export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partial<User>; lang?: string }> = ({ user, error, draft, lang }) => {
   // After a failed save, show what was typed rather than what is stored.
   const v: Partial<User> | null = draft ?? user
   return (
@@ -46,7 +46,7 @@ export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partia
         <Step title="Who are you?" lead="Tell us once. After that, each trip takes a minute to file.">
           {error && <div class="banner error" role="alert">{error}</div>}
           <div class="stack">
-            <SelectField id="p-lang" name="language" label="Language" icon="globe" hideLabel value={v?.language ?? 'en'}
+            <SelectField id="p-lang" name="language" label="Language" icon="globe" hideLabel value={v?.language ?? lang ?? 'en'}
               options={Object.entries(LANGUAGES).map(([value, label]) => ({ value, label }))} />
             <IconInput id="p-name" name="name" label="Name" icon="user" hideLabel value={v?.name} placeholder="Your full name" required autocomplete="name" />
             <IconInput id="p-bday" name="birthday" label="Birthday" icon="cake" hideLabel type="date" value={v?.birthday} max={new Date().toISOString().slice(0, 10)} />
@@ -105,6 +105,18 @@ export const ProfileForm: FC<{ user: User | null; error?: string; draft?: Partia
             <div class="field">
               <label for="p-medication">Medication</label>
               <textarea id="p-medication" name="medication" placeholder="What you take, and what you carry">{v?.medication ?? ''}</textarea>
+            </div>
+            <div class="field">
+              <label for="p-aid">Medical aid</label>
+              <input id="p-aid" name="medical_aid" type="text" maxlength={80} value={v?.medical_aid ?? ''} placeholder="e.g. Discovery Health" />
+            </div>
+            <div class="field">
+              <label for="p-aid-plan">Plan or option</label>
+              <input id="p-aid-plan" name="medical_aid_plan" type="text" maxlength={80} value={v?.medical_aid_plan ?? ''} placeholder="e.g. Classic Saver" />
+            </div>
+            <div class="field">
+              <label for="p-aid-no">Membership number</label>
+              <input id="p-aid-no" name="medical_aid_number" type="text" maxlength={40} value={v?.medical_aid_number ?? ''} placeholder="With your dependant code, if you have one" />
             </div>
           </div>
         </Step>
@@ -516,7 +528,7 @@ const HelpPending: FC<{ trip: Trip; name: string; overdue: boolean; now: number 
         <li><Icon name="flag" /><div><b>Stay where you are.</b><span>{STAY}</span></div></li>
       </ul>
       <a class="btn outline" data-help-sms hidden>Send SARZA a text</a>
-      <div class="cancel-bar"><button class="btn outline" type="button" data-help-undo>Cancel, I'm fine</button></div>
+      <div class="cancel-bar"><button class="btn outline" type="button" data-help-undo>I'm fine, continue {ACTIVITY_NOUN[trip.activity]}</button></div>
     </section>
   )
 }
@@ -558,7 +570,7 @@ export const HelpScreen: FC<{ trip: Trip; messages: Message[]; emergency: string
       </div>
     </div>
     <form method="post" action={`/api/trips/${trip.id}/cancel`}>
-      <button class="btn outline" type="submit">Cancel, I'm fine</button>
+      <button class="btn outline" type="submit">I'm fine, continue {ACTIVITY_NOUN[trip.activity]}</button>
     </form>
     <Chat tripId={trip.id} messages={messages} placeholder="Message SARZA" me="explorer" />
   </main>

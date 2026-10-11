@@ -5,12 +5,12 @@ import type { AppEnv } from '../env'
 import { COOKIE_MAX_AGE, COOKIE_NAME, hashToken, newToken, signMagicLink, verifyMagicLink } from '../lib/auth'
 import { consumeMagicLink, getUserByEmail, getUserById, issueMagicLink, setUserTokenHash, updateUser } from '../lib/db'
 import { sendMagicLink } from '../lib/email'
-import { readBody, str } from '../lib/middleware'
+import { readBody, str, wantsJson } from '../lib/middleware'
 import { Layout } from '../views/layout'
 import { ConfirmLink, LinkSent, Login } from '../views/auth'
 
 export const MAGIC_LINK_TTL_MS = 15 * 60 * 1000
-const isOps = (role: string) => role === 'operator' || role === 'admin'
+export const isOps = (role: string) => role === 'operator' || role === 'admin'
 
 export const auth = new Hono<AppEnv>()
 
@@ -33,13 +33,27 @@ auth.post('/auth/link', async (c) => {
       )
     }
   }
+  if (wantsJson(c)) return c.json({ ok: true })
   return c.html(<Layout title="Check your email" user={null} variant="bare" bodyClass="navy"><LinkSent /></Layout>)
 })
 
-async function finishVerify(c: Context<AppEnv>, token: string) {
-  const link = await verifyMagicLink(c.env.SESSION_SECRET, token, Date.now())
-  const user = link ? await getUserById(c.env.DB, link.userId) : null
-  if (!link || !user || !isOps(user.role) || !(await consumeMagicLink(c.env.DB, user.id, link.expiresAt))) {
+// The emailed link, or just its token. Null when it's expired, used, or not an operator's.
+export async function redeemLink(env: Env, link: string) {
+  let token = link
+  try {
+    token = new URL(link).searchParams.get('t') ?? link
+  } catch {
+    // not a URL, treat the whole string as the token
+  }
+  const signed = await verifyMagicLink(env.SESSION_SECRET, token, Date.now())
+  const user = signed ? await getUserById(env.DB, signed.userId) : null
+  if (!signed || !user || !isOps(user.role) || !(await consumeMagicLink(env.DB, user.id, signed.expiresAt))) return null
+  return user
+}
+
+async function finishVerify(c: Context<AppEnv>, link: string) {
+  const user = await redeemLink(c.env, link)
+  if (!user) {
     return c.html(<Layout title="Sign in" user={null} variant="bare" bodyClass="navy"><Login error="That link has expired or was already used. Ask for a new one." /></Layout>, 400)
   }
   const session = newToken()
@@ -54,15 +68,7 @@ auth.get('/auth/verify', (c) =>
 )
 
 auth.post('/auth/verify', async (c) => {
-  const link = str(await readBody(c), 'link') ?? ''
-  let token = link
-  try {
-    const url = new URL(link)
-    token = url.searchParams.get('t') ?? link
-  } catch {
-    // not a URL, treat the whole string as the token
-  }
-  return finishVerify(c, token)
+  return finishVerify(c, str(await readBody(c), 'link') ?? '')
 })
 
 auth.post('/logout', async (c) => {

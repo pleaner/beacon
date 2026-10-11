@@ -6,7 +6,8 @@ import { COOKIE_NAME, hashToken } from './auth'
 import { getUserByTokenHash, type Role } from './db'
 
 export const loadUser = createMiddleware<AppEnv>(async (c, next) => {
-  const token = getCookie(c, COOKIE_NAME)
+  const bearer = c.req.header('authorization')?.match(/^Bearer (.+)$/)?.[1]
+  const token = bearer ?? getCookie(c, COOKIE_NAME)
   c.set('user', token ? await getUserByTokenHash(c.env.DB, await hashToken(token)) : null)
   await next()
 })

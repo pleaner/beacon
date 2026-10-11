@@ -13,6 +13,7 @@ export interface User {
   photo_key: string | null
   consent_contact: number
   token_hash: string | null
+  app_token_hash?: string | null
   created_at: number
   birthday: string | null
   gender: string | null
@@ -25,9 +26,12 @@ export interface User {
   conditions: string | null
   medication: string | null
   blood_type: string | null
+  medical_aid: string | null
+  medical_aid_plan: string | null
+  medical_aid_number: string | null
 }
 type ProfileExtra = 'birthday' | 'gender' | 'height_cm' | 'weight_kg' | 'shoe_size' | 'language' | 'emergency_relation'
-  | 'allergies' | 'conditions' | 'medication' | 'blood_type'
+  | 'allergies' | 'conditions' | 'medication' | 'blood_type' | 'medical_aid' | 'medical_aid_plan' | 'medical_aid_number'
 export type NewUser = Omit<User, 'id' | 'created_at' | 'token_hash' | ProfileExtra> &
   Partial<Pick<User, ProfileExtra>> & { token_hash?: string | null }
 
@@ -75,18 +79,20 @@ export async function createUser(db: DB, u: NewUser): Promise<User> {
       `INSERT INTO users (id, role, name, phone, email, organisation, emergency_name, emergency_phone,
         description, photo_key, consent_contact, token_hash, created_at,
         birthday, gender, height_cm, weight_kg, shoe_size, language, emergency_relation,
-        allergies, conditions, medication, blood_type)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        allergies, conditions, medication, blood_type, medical_aid, medical_aid_plan, medical_aid_number)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .bind(id, u.role, u.name, u.phone, u.email, u.organisation, u.emergency_name, u.emergency_phone,
       u.description, u.photo_key, u.consent_contact ? 1 : 0, u.token_hash ?? null, created_at,
       u.birthday ?? null, u.gender ?? null, u.height_cm ?? null, u.weight_kg ?? null, u.shoe_size ?? null,
       u.language ?? null, u.emergency_relation ?? null,
-      u.allergies ?? null, u.conditions ?? null, u.medication ?? null, u.blood_type ?? null)
+      u.allergies ?? null, u.conditions ?? null, u.medication ?? null, u.blood_type ?? null,
+      u.medical_aid ?? null, u.medical_aid_plan ?? null, u.medical_aid_number ?? null)
     .run()
   return {
     birthday: null, gender: null, height_cm: null, weight_kg: null, shoe_size: null, language: null, emergency_relation: null,
     allergies: null, conditions: null, medication: null, blood_type: null,
+    medical_aid: null, medical_aid_plan: null, medical_aid_number: null,
     ...u, id, created_at, token_hash: u.token_hash ?? null,
   }
 }
@@ -94,8 +100,9 @@ export async function createUser(db: DB, u: NewUser): Promise<User> {
 export function getUserById(db: DB, id: string) {
   return db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<User>()
 }
+// The web session cookie and the app's bearer token are separate, so each can sign out alone.
 export function getUserByTokenHash(db: DB, hash: string) {
-  return db.prepare('SELECT * FROM users WHERE token_hash = ?').bind(hash).first<User>()
+  return db.prepare('SELECT * FROM users WHERE token_hash = ?1 OR app_token_hash = ?1').bind(hash).first<User>()
 }
 export function getUserByEmail(db: DB, email: string) {
   return db
@@ -108,8 +115,8 @@ export function getUserByEmail(db: DB, email: string) {
 }
 
 const USER_COLS = ['role', 'name', 'phone', 'email', 'organisation', 'emergency_name', 'emergency_phone',
-  'description', 'photo_key', 'consent_contact', 'token_hash', 'birthday', 'gender', 'height_cm', 'weight_kg',
-  'shoe_size', 'language', 'emergency_relation', 'allergies', 'conditions', 'medication', 'blood_type'] as const
+  'description', 'photo_key', 'consent_contact', 'token_hash', 'app_token_hash', 'birthday', 'gender', 'height_cm', 'weight_kg',
+  'shoe_size', 'language', 'emergency_relation', 'allergies', 'conditions', 'medication', 'blood_type', 'medical_aid', 'medical_aid_plan', 'medical_aid_number'] as const
 
 export async function updateUser(db: DB, id: string, fields: Partial<Omit<User, 'id' | 'created_at'>>) {
   const cols = USER_COLS.filter((k) => k in fields)

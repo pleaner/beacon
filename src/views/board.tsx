@@ -116,7 +116,8 @@ export const PersonCard: FC<{ user: User; now: number }> = ({ user, now }) => {
   if (user.weight_kg) facts.push(['Weight', `${user.weight_kg} kg`])
   if (user.shoe_size) facts.push(['Shoe', `UK ${user.shoe_size}`])
   if (user.blood_type) facts.push(['Blood type', user.blood_type])
-  const medical = ([['Allergies', user.allergies], ['Conditions', user.conditions], ['Medication', user.medication]] as const).filter(([, v]) => v)
+  const aid = [user.medical_aid, user.medical_aid_plan, user.medical_aid_number && `no. ${user.medical_aid_number}`].filter(Boolean).join(', ')
+  const medical = ([['Allergies', user.allergies], ['Conditions', user.conditions], ['Medication', user.medication], ['Medical aid', aid]] as const).filter(([, v]) => v)
   return (
     <section class="card">
       <h2>Person</h2>
@@ -310,6 +311,19 @@ export const TripDetail: FC<{
               {ADMIN_STATUSES.map((st) => <option value={st} selected={st === trip.status}>{st[0]!.toUpperCase() + st.slice(1)}</option>)}
             </select>
             <button class="btn small" type="submit">Save</button>
+          </form>
+        </section>
+      )}
+
+      {trip.status !== 'closed' && (
+        <section class="card">
+          <h2>Siren</h2>
+          <p class="muted" style="margin: 0; font-size: 14px;">
+            Makes {first}'s phone sound loudly, even on silent, so searchers nearby can hear it. Needs the Guardian app.
+            {trip.siren_at && ` Last sounded ${new Date(trip.siren_at).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg' })}.`}
+          </p>
+          <form method="post" action={`/api/board/trips/${trip.id}/siren`} onsubmit="return confirm('Sound the siren on this phone?')">
+            <button class="btn" type="submit">Sound the siren</button>
           </form>
         </section>
       )}
