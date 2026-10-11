@@ -81,6 +81,8 @@ private fun OpsBar(title: String, go: (Screen) -> Unit) {
                 }
                 DropdownMenu(open, { open = false }) {
                     DropdownMenuItem({ Text("Board") }, { open = false; go(Screen.Board) })
+                    // Admins plan their own trips from the explorer screens.
+                    if (Store.role == "admin") DropdownMenuItem({ Text("My activities") }, { open = false; go(Screen.Home) })
                     DropdownMenuItem({ Text("Sign out") }, {
                         open = false
                         work.run(scope, { runCatching { Api.post("/api/logout") } }) { Store.signOut(); go(Screen.Welcome) }

@@ -165,6 +165,7 @@ const OpsBar: FC<{ user: User; title: string; current?: string; helpCount?: numb
           <div class="body">
             <span class="group">Operations</span>
             {item('/board', 'board', 'board', 'Board', helpCount)}
+            {isAdmin && item('/', 'activities', 'hike', 'My activities')}
             {isAdmin && (
               <>
                 <div class="sep"></div>

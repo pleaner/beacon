@@ -26,7 +26,7 @@ Everyone signs in with Google, or Apple once its keys are set. Without `GOOGLE_C
 
     npm run migrate:prod && npm run deploy
 
-Run the migration before the deploy. Local dev uses `npm run migrate:local` and `npm run dev`. Secrets, set with `wrangler secret put NAME`: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and for Apple `APPLE_SERVICES_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (the .p8 file's contents). Deploy only once the Google pair is set: with neither provider set, nobody can sign in.
+Run the migration before the deploy. Local dev uses `npm run migrate:local` and `npm run dev`. Secrets, set with `wrangler secret put NAME`: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and for Apple `APPLE_SERVICES_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (the .p8 file's contents). Deploy only once the Google pair is set: with neither provider set, nobody can sign in. `RESEND_API_KEY` stays set on the worker for email features to come; nothing reads it today.
 
 Google: a Web OAuth client in Google Cloud with the redirect URI `https://guardian.pleaner.com/auth/google/callback`. Apple: a Services ID with the return URL `https://guardian.pleaner.com/auth/apple/callback`, and a Sign in with Apple key. Production serves https://guardian.pleaner.com.
 
