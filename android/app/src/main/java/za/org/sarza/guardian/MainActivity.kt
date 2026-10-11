@@ -14,6 +14,8 @@ sealed interface Screen {
     data object Welcome : Screen
     data object Profile : Screen
     data object Home : Screen
+    data class HomeNotice(val text: String) : Screen
+    data object Back : Screen
     data class NewTrip(val activity: String) : Screen
     data object Trip : Screen
     data class SignIn(val link: String?) : Screen
@@ -38,6 +40,8 @@ class MainActivity : ComponentActivity() {
                     Screen.Welcome -> WelcomeScreen(go)
                     Screen.Profile -> ProfileScreen(go)
                     Screen.Home -> HomeScreen(go)
+                    is Screen.HomeNotice -> HomeScreen(go, s.text)
+                    Screen.Back -> BackScreen(go)
                     is Screen.NewTrip -> NewTripScreen(s.activity, go)
                     Screen.Trip -> TripScreen(go)
                     is Screen.SignIn -> SignInScreen(s.link, go)

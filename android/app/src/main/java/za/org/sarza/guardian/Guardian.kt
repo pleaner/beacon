@@ -78,6 +78,11 @@ object Store {
         get() = p.getLong("alarmed", 0)
         set(v) = p.edit().putLong("alarmed", v).apply()
 
+    // The newest fix the server has confirmed, shown back on the help screen.
+    var lastSent: JSONObject?
+        get() = p.getString("lastSent", null)?.let { JSONObject(it) }
+        set(v) = p.edit().putString("lastSent", v?.toString()).apply()
+
     val trip: JSONObject? get() = me?.optJSONObject("trip")
 
     fun updateTrip(change: (JSONObject) -> Unit) {

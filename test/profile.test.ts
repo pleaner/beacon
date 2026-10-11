@@ -21,6 +21,13 @@ describe('GET /profile', () => {
     expect(html).toContain('name="consent_contact"')
     expect(html).toContain('name="allergies"')
     expect(html).toContain('name="blood_type"')
+    expect(html).toContain('name="medical_aid_number"')
+  })
+
+  it('picks the browser language for a new profile', async () => {
+    const html = await (await exports.default.fetch(`${BASE}/profile`, { headers: { 'accept-language': 'af-ZA, de-DE;q=0.8, en;q=0.5' } })).text()
+    expect(html).toMatch(/<option value="de" selected/)
+    expect(html).not.toContain('Prefer not to say')
   })
 
   it('renders a filled form for an explorer, and for an operator too', async () => {
@@ -84,6 +91,7 @@ describe('POST /api/profile', () => {
         birthday: '1992-03-12', gender: 'Female', language: 'de', height_cm: '168', weight_kg: '61', shoe_size: '6.5',
         emergency_name: 'Lindiwe', emergency_relation: 'Brother or sister', emergency_phone: '7700 900123', emergency_phone_country: '44',
         allergies: 'Bee stings', conditions: 'Asthma', medication: 'Ventolin, carries an EpiPen', blood_type: 'O-',
+        medical_aid: 'Discovery Health', medical_aid_plan: 'Classic Saver', medical_aid_number: '123456789 02',
       }),
       redirect: 'manual',
     })
@@ -95,6 +103,7 @@ describe('POST /api/profile', () => {
     expect(u.emergency_phone).toBe('+447700900123')
     expect(u).toMatchObject({ birthday: '1992-03-12', gender: 'Female', language: 'de', height_cm: 168, weight_kg: 61, shoe_size: '6.5', emergency_relation: 'Brother or sister' })
     expect(u).toMatchObject({ allergies: 'Bee stings', conditions: 'Asthma', medication: 'Ventolin, carries an EpiPen', blood_type: 'O-' })
+    expect(u).toMatchObject({ medical_aid: 'Discovery Health', medical_aid_plan: 'Classic Saver', medical_aid_number: '123456789 02' })
   })
 
   it('drops out-of-range or unknown profile details instead of failing', async () => {

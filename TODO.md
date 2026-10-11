@@ -12,9 +12,10 @@ Native apps, in order. See `docs/native-plan.md`.
 - [ ] Android: create the Firebase project and set `FCM_SERVICE_ACCOUNT`, so phones get pushes when the app is closed.
 - [ ] Android: make a release signing key, set `ANDROID_CERT_SHA256` on the worker, and publish to Play internal testing.
 - [ ] Android: run a real hike on a Samsung phone to check it keeps tracking with the screen off.
-- [ ] Android: explorer photos in the profile, voice notes and photos in chat, and trip photos on the operator screen are web-only for now.
+- [ ] Android: voice notes and photos in chat, the end-of-trip share card, and the brief and GPX for searchers are web-only for now.
 - [ ] Android: Sign in with Google. Use Credential Manager on the phone, and have the server check the ID token's signature against Google's keys. A web version was built and dropped on 2026-09-30, and nothing from it was merged.
 - [ ] iOS app, explorer side then operator side, with the Live Activity.
+- [ ] Apple Watch: an emergency alert from the wrist, so an explorer can call for help without taking the phone out, and see "are you okay?" and help alerts on the watch.
 - [ ] Fall detection, recording first, alerts after.
 - [ ] Bring back the voice note on the trip plan. It was taken out on 2026-09-27; the `trips.voice_note_key` column is still there, and git history has the recorder with its buttons inside the route box.
 - [ ] Internationalisation: show the app in the language the explorer picks in their profile (English, German, Dutch, French, Spanish, Italian, Portuguese, Mandarin).

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { AppEnv } from '../env'
 import type { User } from '../lib/db'
-import { ACTIVITIES, type Activity } from '../lib/constants'
+import { ACTIVITIES, LANGUAGES, type Activity, type Language } from '../lib/constants'
 import { getChecklist, getSetting, listMessages, listPositions } from '../lib/db'
 import { requireRole } from '../lib/middleware'
 import { canSeePhoto } from '../lib/photos'
@@ -85,10 +85,16 @@ export async function newTripPage(env: Env, user: User, activity: Activity, erro
   )
 }
 
-export function profilePage(user: User | null, opts: { error?: string; vapid?: string; draft?: Partial<User> } = {}) {
+// The browser's first language we offer, for a new profile. English otherwise.
+export function preferredLanguage(accept: string | undefined): Language {
+  const codes = (accept ?? '').split(',').map((s) => s.trim().slice(0, 2).toLowerCase())
+  return (codes.find((c) => c in LANGUAGES) as Language | undefined) ?? 'en'
+}
+
+export function profilePage(user: User | null, opts: { error?: string; vapid?: string; draft?: Partial<User>; lang?: string } = {}) {
   return (
     <Layout title="Profile" user={user} variant="bare" bodyClass="plain" bodyAttrs={{ 'data-vapid': opts.vapid ?? '' }}>
-      <ProfileForm user={user} error={opts.error} draft={opts.draft} />
+      <ProfileForm user={user} error={opts.error} draft={opts.draft} lang={opts.lang} />
     </Layout>
   )
 }
@@ -104,7 +110,7 @@ explorer.get('/pets', requireRole('explorer', 'operator', 'admin'), async (c) =>
 
 explorer.get('/profile', async (c) => {
   const user = c.var.user
-  const page = profilePage(user, { vapid: c.env.VAPID_PUBLIC_KEY })
+  const page = profilePage(user, { vapid: c.env.VAPID_PUBLIC_KEY, lang: preferredLanguage(c.req.header('accept-language')) })
   return c.html(page)
 })
 

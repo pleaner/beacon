@@ -50,6 +50,9 @@ function profileExtras(body: Body) {
     conditions: str(body, 'conditions'),
     medication: str(body, 'medication'),
     blood_type: pick('blood_type', BLOOD_TYPES),
+    medical_aid: str(body, 'medical_aid')?.slice(0, 80) ?? null,
+    medical_aid_plan: str(body, 'medical_aid_plan')?.slice(0, 80) ?? null,
+    medical_aid_number: str(body, 'medical_aid_number')?.slice(0, 40) ?? null,
   }
   // Only touch what the client sent, so an older client never blanks fields it doesn't know about.
   return Object.fromEntries(Object.entries(all).filter(([k]) => k in body)) as Partial<typeof all>

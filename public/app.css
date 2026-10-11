@@ -275,7 +275,7 @@ main.help-screen { height: 100vh; height: 100dvh; padding-bottom: 0; }
 .help-screen .chat .compose .btn.send { flex: none; width: 46px; min-height: 46px; height: 46px; padding: 0; border-radius: 23px; font-size: 0; background: var(--navy)
   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12H19'/%3E%3Cpath d='M13 6L19 12L13 18'/%3E%3C/svg%3E") center / 22px no-repeat; }
 
-/* While a call is waiting to go out, "Cancel, I'm fine" sits at the bottom of the screen. */
+/* While a call is waiting to go out, "I'm fine, continue" sits at the bottom of the screen. */
 body.help-pending main { min-height: 100vh; min-height: 100dvh; padding-bottom: 0; }
 #help-pending:not([hidden]) { flex: 1; }
 .cancel-bar { margin-top: auto; position: sticky; bottom: 0; padding: 12px 0 calc(16px + env(safe-area-inset-bottom)); background: var(--ground); }

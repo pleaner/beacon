@@ -28,6 +28,18 @@ object Api {
         return send("POST", path, "multipart/form-data; boundary=$b", out.toByteArray())
     }
 
+    // A photo, with the bearer token, as raw bytes.
+    fun bytes(path: String): ByteArray {
+        val c = URL(BuildConfig.API_URL + path).openConnection() as HttpURLConnection
+        try {
+            Store.token?.let { c.setRequestProperty("authorization", "Bearer $it") }
+            if (c.responseCode !in 200..299) throw Failed(c.responseCode, "Not found")
+            return c.inputStream.use { it.readBytes() }
+        } finally {
+            c.disconnect()
+        }
+    }
+
     private fun send(method: String, path: String, type: String?, body: ByteArray?): JSONObject {
         val c = URL(BuildConfig.API_URL + path).openConnection() as HttpURLConnection
         try {

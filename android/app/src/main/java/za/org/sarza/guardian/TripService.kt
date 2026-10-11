@@ -114,6 +114,7 @@ class TripService : Service(), LocationListener {
                 break
             }
             Store.dropFromQueue(batch.length())
+            Store.lastSent = batch.getJSONObject(batch.length() - 1)
             Store.updateTrip { t ->
                 t.put("status", reply.optString("status", t.optString("status")))
                 t.put("return_by", reply.optLong("return_by", t.optLong("return_by")))
@@ -154,7 +155,10 @@ class TripService : Service(), LocationListener {
         }
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val extend = PendingIntent.getBroadcast(this, 0, Intent(this, TripAction::class.java).setAction(TripAction.EXTEND), PendingIntent.FLAG_IMMUTABLE)
-        return Notification.Builder(this, Guardian.CH_TRIP)
+        // Counting down to the return time: Android keeps the timer ticking itself, in the shade and, on Android 16,
+        // in a chip in the status bar next to the icon. Overdue or in trouble, the chip says so instead.
+        val counting = left > 0 && t?.optString("status") != "help" && Store.helpPending == null
+        val b = Notification.Builder(this, Guardian.CH_TRIP)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("Guardian: trip in progress")
             .setContentText(text)
@@ -162,9 +166,18 @@ class TripService : Service(), LocationListener {
             .setGroup("trip")
             .setOnlyAlertOnce(true)
             .setContentIntent(open)
+            .setWhen(back)
+            .setShowWhen(counting)
+            .setUsesChronometer(counting)
+            .setChronometerCountDown(counting)
             .addAction(Notification.Action.Builder(null, "Add 1 hour", extend).build())
             .addAction(Notification.Action.Builder(null, "Open", open).build())
-            .build()
+        if (Build.VERSION.SDK_INT >= 36) {
+            // Notification.EXTRA_REQUEST_PROMOTED_ONGOING, which Android 16 reads before it has a setter for it.
+            b.addExtras(android.os.Bundle().apply { putBoolean("android.requestPromotedOngoing", true) })
+            if (!counting) b.setShortCriticalText(if (left < 0 && t?.optString("status") != "help") "Overdue" else "Help")
+        }
+        return b.build()
     }
 
     companion object {

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Status bar icon: a shield. White on transparent, as Android requires. -->
+<!-- Status bar icon: the SARZA badge's ring and compass star. White on transparent, as Android requires. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -7,5 +7,9 @@
     android:viewportHeight="24">
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M12,2L4,5v6c0,5.25 3.4,10.15 8,11.5c4.6,-1.35 8,-6.25 8,-11.5V5L12,2zM12,7a2,2 0,1 1,0 4a2,2 0,1 1,0 -4zM8,16c0,-2 2,-3 4,-3s4,1 4,3v0.5H8V16z" />
+        android:fillType="evenOdd"
+        android:pathData="M12,1a11,11 0,1 1,0 22a11,11 0,1 1,0 -22zM12,3a9,9 0,1 0,0 18a9,9 0,1 0,0 -18z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,4L13.4,10.6L20,12L13.4,13.4L12,20L10.6,13.4L4,12L10.6,10.6z" />
 </vector>

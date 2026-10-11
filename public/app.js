@@ -450,7 +450,7 @@
     let helpWanted = false
     const isPending = () => { if (helpWanted) return true; try { return !!localStorage.getItem(helpKey) } catch { return false } }
     const dropHelp = () => { helpWanted = false; try { localStorage.removeItem(helpKey) } catch {} }
-    // The server has it: a leftover must not resend after "Cancel, I'm fine" brings the trip screen back.
+    // The server has it: a leftover must not resend after "I'm fine, continue" brings the trip screen back.
     if (body.dataset.tripStatus === 'help') dropHelp()
     let sendingHelp = false
     async function sendHelp() {

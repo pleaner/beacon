@@ -116,7 +116,8 @@ export const PersonCard: FC<{ user: User; now: number }> = ({ user, now }) => {
   if (user.weight_kg) facts.push(['Weight', `${user.weight_kg} kg`])
   if (user.shoe_size) facts.push(['Shoe', `UK ${user.shoe_size}`])
   if (user.blood_type) facts.push(['Blood type', user.blood_type])
-  const medical = ([['Allergies', user.allergies], ['Conditions', user.conditions], ['Medication', user.medication]] as const).filter(([, v]) => v)
+  const aid = [user.medical_aid, user.medical_aid_plan, user.medical_aid_number && `no. ${user.medical_aid_number}`].filter(Boolean).join(', ')
+  const medical = ([['Allergies', user.allergies], ['Conditions', user.conditions], ['Medication', user.medication], ['Medical aid', aid]] as const).filter(([, v]) => v)
   return (
     <section class="card">
       <h2>Person</h2>
