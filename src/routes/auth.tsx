@@ -2,13 +2,16 @@ import type { Context } from 'hono'
 import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import type { AppEnv } from '../env'
-import { COOKIE_MAX_AGE, COOKIE_NAME, hashToken, newToken } from '../lib/auth'
-import { createUser, getUserByEmail, getUserBySub, setUserTokenHash, updateUser, type User } from '../lib/db'
+import { COOKIE_MAX_AGE, COOKIE_NAME, hashToken, newToken, signMagicLink, verifyMagicLink } from '../lib/auth'
+import { consumeMagicLink, createUser, getUserByEmail, getUserById, getUserBySub, issueMagicLink, setUserTokenHash, updateUser, type User } from '../lib/db'
+import { sendMagicLink } from '../lib/email'
 import { readBody, str } from '../lib/middleware'
 import { authorizeUrl, enabledProviders, exchangeCode, type Identity, type Provider } from '../lib/oauth'
+import { ConfirmLink, LinkSent } from '../views/auth'
 import { Layout } from '../views/layout'
 import { Welcome } from '../views/explorer'
 
+export const MAGIC_LINK_TTL_MS = 15 * 60 * 1000
 export const isOps = (role: string) => role === 'operator' || role === 'admin'
 
 // A new explorer has no phone yet; the profile form asks for it before anything else.
@@ -44,6 +47,48 @@ const welcome = (c: Context<AppEnv>, error?: string) =>
 
 auth.get('/login', (c) => (c.var.user ? c.redirect(homeFor(c.var.user)) : welcome(c)))
 
+// Sign-in by emailed link, for anyone who already has an account. New people sign up with Google or Apple.
+// The page says the same thing whether or not the address is known.
+auth.post('/auth/link', async (c) => {
+  const email = str(await readBody(c), 'email')?.toLowerCase()
+  if (email) {
+    const user = await getUserByEmail(c.env.DB, email)
+    const expiresAt = Date.now() + MAGIC_LINK_TTL_MS
+    if (user && (await issueMagicLink(c.env.DB, user.id, expiresAt))) {
+      const token = await signMagicLink(c.env.SESSION_SECRET, user.id, expiresAt)
+      const url = `${c.env.APP_URL}/auth/verify?t=${token}`
+      c.executionCtx.waitUntil(
+        sendMagicLink(c.env, email, url).catch((e) => console.error('magic link email failed', String(e))),
+      )
+    }
+  }
+  return c.html(<Layout title="Check your email" user={null} variant="bare" bodyClass="navy"><LinkSent /></Layout>)
+})
+
+// The emailed link, or just its token. Null when it's expired or used.
+async function redeemLink(env: Env, link: string) {
+  let token = link
+  try {
+    token = new URL(link).searchParams.get('t') ?? link
+  } catch {
+    // not a URL, treat the whole string as the token
+  }
+  const signed = await verifyMagicLink(env.SESSION_SECRET, token, Date.now())
+  const user = signed ? await getUserById(env.DB, signed.userId) : null
+  if (!signed || !user || !(await consumeMagicLink(env.DB, user.id, signed.expiresAt))) return null
+  return user
+}
+
+// A link works once, and email scanners open links to check them. Sign in only on the button press.
+auth.get('/auth/verify', (c) =>
+  c.html(<Layout title="Sign in" user={null} variant="bare" bodyClass="navy"><ConfirmLink token={c.req.query('t') ?? ''} /></Layout>),
+)
+
+auth.post('/auth/verify', async (c) => {
+  const user = await redeemLink(c.env, str(await readBody(c), 'link') ?? '')
+  return user ? signIn(c, user) : welcome(c, 'That link has expired or was already used. Ask for a new one.')
+})
+
 // The state and nonce ride in a short-lived cookie. SameSite=None because Apple POSTs the callback from its own site.
 const STATE_COOKIE = 'oauth'
 const isProvider = (p: string): p is Provider => p === 'google' || p === 'apple'
@@ -70,6 +115,10 @@ async function finish(c: Context<AppEnv>, p: Provider, q: { code?: string | null
     console.error('sign-in failed', p, String(e))
     return welcome(c, "We couldn't sign you in. Try again.")
   }
+  return signIn(c, user)
+}
+
+async function signIn(c: Context<AppEnv>, user: User) {
   const session = newToken()
   await setUserTokenHash(c.env.DB, user.id, await hashToken(session))
   setCookie(c, COOKIE_NAME, session, { httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: COOKIE_MAX_AGE })

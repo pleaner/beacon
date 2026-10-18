@@ -15,7 +15,7 @@ Spec: docs/superpowers/specs/2026-09-17-sarza-beacon-design.md
 
 Trigger the cron by hand in dev: `curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"`.
 
-Everyone signs in with Google, or Apple once its keys are set. Without `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.dev.vars` there are no sign-in buttons; `.claude/skills/verify/SKILL.md` shows how to make a session by hand.
+Everyone signs in with Google, or Apple once its keys are set. Anyone who already has an account can also ask for a sign-in link by email on the web. Without `RESEND_API_KEY` the link goes to the dev server log. Without `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.dev.vars` there is no Google button; `.claude/skills/verify/SKILL.md` shows how to make a session by hand.
 
 ## Test
 
@@ -26,7 +26,7 @@ Everyone signs in with Google, or Apple once its keys are set. Without `GOOGLE_C
 
     npm run migrate:prod && npm run deploy
 
-Run the migration before the deploy. Local dev uses `npm run migrate:local` and `npm run dev`. Secrets, set with `wrangler secret put NAME`: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and for Apple `APPLE_SERVICES_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (the .p8 file's contents). Deploy only once the Google pair is set: with neither provider set, nobody can sign in. `RESEND_API_KEY` stays set on the worker for email features to come; nothing reads it today.
+Run the migration before the deploy. Local dev uses `npm run migrate:local` and `npm run dev`. Secrets, set with `wrangler secret put NAME`: `SESSION_SECRET` (signs the emailed links), `RESEND_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and for Apple `APPLE_SERVICES_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (the .p8 file's contents). Deploy only once the Google pair is set: with neither provider set, nobody can sign in.
 
 Google: a Web OAuth client in Google Cloud with the redirect URI `https://guardian.pleaner.com/auth/google/callback`. Apple: a Services ID with the return URL `https://guardian.pleaner.com/auth/apple/callback`, and a Sign in with Apple key. Production serves https://guardian.pleaner.com.
 
