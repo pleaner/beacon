@@ -21,7 +21,7 @@ const opts = (xs: readonly string[]) => xs.map((x) => ({ value: x, label: x }))
 // ---------- welcome ----------
 
 // The front door for anyone without a cookie. Says what Guardian is before it asks for a name.
-// The front door for everyone, explorers and operators: sign in with Google or Apple.
+// The front door for everyone, explorers and operators: sign in with Google or Apple, or an emailed link.
 export const Welcome: FC<{ providers: Provider[]; error?: string }> = ({ providers, error }) => (
   <main class="signin">
     <img src="/sarza-logo.png" alt="SARZA Search &amp; Rescue" style="width: 132px; height: 132px; align-self: center;" />
@@ -37,8 +37,14 @@ export const Welcome: FC<{ providers: Provider[]; error?: string }> = ({ provide
       {providers.includes('apple') && (
         <a class="btn black big" href="/auth/apple">{raw(APPLE_MARK)}Continue with Apple</a>
       )}
-      {providers.length === 0 && <div class="banner warn" role="status">Sign-in isn't set up on this server yet.</div>}
     </div>
+    <form method="post" action="/auth/link" class="stack" style="gap: 12px;">
+      <div class="field">
+        <label for="l-email">Or get a sign-in link by email</label>
+        <input id="l-email" name="email" type="email" required autocomplete="email" placeholder="you@example.com" />
+      </div>
+      <button class="btn yellow" type="submit"><Icon name="mail" />Email me a link</button>
+    </form>
     <p style="margin: 0; font-size: 14px;">Turn a bad day into a great story. SARZA operators sign in here too.</p>
   </main>
 )
