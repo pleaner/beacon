@@ -2,9 +2,8 @@ import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import worker from '../src/index'
-import { hashToken, signMagicLink } from '../src/lib/auth'
+import { hashToken } from '../src/lib/auth'
 import { getUserById, getUserByTokenHash } from '../src/lib/db'
-import { lastMagicLinkForTests } from '../src/lib/email'
 import { cookieFor, makeExplorer, makeOperator } from './helpers'
 import { fakeProviders } from './fake-oauth'
 
@@ -35,6 +34,7 @@ describe('sign in with Google on the web', () => {
     const html = await res.text()
     expect(html).toContain('href="/auth/google"')
     expect(html).not.toContain('href="/auth/apple"')
+    expect(html).not.toContain('name="email"')
     expect((await exports.default.fetch(`${BASE}/auth/apple`)).status).toBe(404)
     const o = await makeOperator()
     res = await exports.default.fetch(`${BASE}/login`, { headers: { cookie: cookieFor(o.token) }, redirect: 'manual' })
@@ -154,64 +154,6 @@ describe('sign in with Apple on the web', () => {
     expect(claims).toMatchObject({ iss: 'TEAM123', sub: 'za.org.sarza.guardian.web', aud: 'https://appleid.apple.com' })
     const user = (await getUserByTokenHash(env.DB, await hashToken(sessionFrom(res)!)))!
     expect(user).toMatchObject({ name: 'Lwazi Ndlovu', apple_sub: 'a-1', role: 'explorer' })
-  })
-})
-
-const form = (fields: Record<string, string>) => ({
-  method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields), redirect: 'manual' as const,
-})
-
-describe('sign in with an emailed link', () => {
-  it('emails a link to a known operator, and the link signs them in on the button press', async () => {
-    const o = await makeOperator({ email: 'ops@sarza.test' })
-    expect(await (await exports.default.fetch(`${BASE}/login`)).text()).toContain('name="email"')
-    let res = await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'OPS@sarza.test' }))
-    expect(await res.text()).toContain('Check your email')
-    const link = lastMagicLinkForTests()!
-    expect(link.to).toBe('ops@sarza.test')
-    res = await exports.default.fetch(link.url, { redirect: 'manual' })
-    expect(res.status).toBe(200)
-    expect(res.headers.get('set-cookie')).toBeNull()
-    res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: link.url }))
-    expect(res.headers.get('location')).toBe('/board')
-    expect((await getUserByTokenHash(env.DB, await hashToken(sessionFrom(res)!)))?.id).toBe(o.user.id)
-  })
-
-  it('works for an explorer too, from the pasted link', async () => {
-    const e = await makeExplorer({ email: 'hiker@sarza.test' })
-    await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'hiker@sarza.test' }))
-    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: lastMagicLinkForTests()!.url }))
-    expect(res.headers.get('location')).toBe('/')
-    expect((await getUserByTokenHash(env.DB, await hashToken(sessionFrom(res)!)))?.id).toBe(e.user.id)
-  })
-
-  it('says the same thing for an unknown email and sends nothing', async () => {
-    const before = lastMagicLinkForTests()
-    const res = await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'nobody@sarza.test' }))
-    expect(await res.text()).toContain('Check your email')
-    expect(lastMagicLinkForTests()).toBe(before)
-  })
-
-  it('a link works once, and at most one goes out a minute', async () => {
-    await makeOperator({ email: 'once@sarza.test' })
-    await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'once@sarza.test' }))
-    const link = lastMagicLinkForTests()!
-    await exports.default.fetch(`${BASE}/auth/link`, form({ email: 'once@sarza.test' }))
-    expect(lastMagicLinkForTests()).toBe(link)
-    expect((await exports.default.fetch(`${BASE}/auth/verify`, form({ link: link.url }))).status).toBe(302)
-    const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link: link.url }))
-    expect(res.status).toBe(400)
-    expect(res.headers.get('set-cookie')).toBeNull()
-  })
-
-  it('rejects garbage and a link signed for a never-issued expiry', async () => {
-    const o = await makeOperator()
-    const forged = await signMagicLink(env.SESSION_SECRET, o.user.id, Date.now() + 60_000)
-    for (const link of ['nope', forged]) {
-      const res = await exports.default.fetch(`${BASE}/auth/verify`, form({ link }))
-      expect(res.status).toBe(400)
-      expect(await res.text()).toContain('expired')
-    }
   })
 })
 

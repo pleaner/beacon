@@ -1,7 +1,4 @@
 APP_URL=
-SESSION_SECRET=
-# Unset: sign-in links are logged instead of emailed.
-RESEND_API_KEY=
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 # Sign in with Google (web OAuth client). Without these there is no way to sign in except minting a session; see .claude/skills/verify.

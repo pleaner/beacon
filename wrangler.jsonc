@@ -14,7 +14,6 @@
   ],
   "vars": {
     "APP_URL": "https://guardian.pleaner.com",
-    "EMAIL_FROM": "Guardian by SARZA <noreply@mybestlife.live>",
     "EMERGENCY_PHONE": "+27219370300",
     "VAPID_SUBJECT": "mailto:noreply@mybestlife.live",
     "GEOCODE_URL": "https://nominatim.openstreetmap.org/reverse",

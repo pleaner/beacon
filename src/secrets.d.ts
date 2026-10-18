@@ -3,10 +3,6 @@
 // Cloudflare.Env here, so secrets only need declaring once, on Cloudflare.Env.
 declare namespace Cloudflare {
   interface Env {
-    // Signs the emailed sign-in links.
-    SESSION_SECRET: string
-    // Unset: sign-in links go to the log instead of email.
-    RESEND_API_KEY?: string
     VAPID_PUBLIC_KEY: string
     VAPID_PRIVATE_KEY: string
     // Firebase service account JSON for the Android app's push. Unset: phones get no push.
