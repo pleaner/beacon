@@ -627,7 +627,7 @@ const CARD_DISPLAY = "'Barlow Condensed', 'Arial Narrow', sans-serif"
 const CARD_BODY = "'IBM Plex Sans', Helvetica, Arial, sans-serif"
 
 // The share card, 1080 x 1920: the 9:16 of phone stories and status updates, so it fills the screen uncropped.
-export const TripCard: FC<{ trip: Trip; summary: Summary; map: CardMap | null; logo: string | null; host: string }> = ({ trip, summary, map, logo, host }) => {
+export const TripCard: FC<{ trip: Trip; summary: Summary; map: CardMap | null; logo: string | null }> = ({ trip, summary, map, logo }) => {
   const { route } = summary
   const pts = map?.pts ?? []
   const elev = map && route.filter((p) => p.alt != null).length >= 2 ? elevationPath(route, 110, 1440, 860, 190) : null
@@ -688,15 +688,15 @@ export const TripCard: FC<{ trip: Trip; summary: Summary; map: CardMap | null; l
           <text x={110 + i * 300} y="1815" fill="#fff" font-size="56" font-weight="800" font-family={CARD_DISPLAY}>{value}</text>
         </g>
       ))}
-      <text x="110" y="1878" fill="#fadf06" font-size="28" font-weight="600" font-family={CARD_BODY}>Guardian by SARZA · Plan your trip on {host}</text>
+      <text x="110" y="1878" fill="#fadf06" font-size="28" font-weight="600" font-family={CARD_BODY}>Guardian by SARZA</text>
     </svg>
   )
 }
 
-export const TripDone: FC<{ trip: Trip; summary: Summary; map: CardMap | null; logo: string | null; host: string; appUrl: string }> = ({ trip, summary, map, logo, host, appUrl }) => (
+export const TripDone: FC<{ trip: Trip; summary: Summary; map: CardMap | null; logo: string | null; appUrl: string }> = ({ trip, summary, map, logo, appUrl }) => (
   <main class="done" data-share-url={appUrl} data-share-name={`guardian-${trip.id.slice(0, 8)}.png`}
     data-share-text={`Back safe from my ${activityName(trip).toLowerCase()}: ${km(summary.distance)}, ${summary.climb} m up. I file a trip plan with Guardian by SARZA, so search and rescue knows where I went.`}>
-    <TripCard trip={trip} summary={summary} map={map} logo={logo} host={host} />
+    <TripCard trip={trip} summary={summary} map={map} logo={logo} />
     <div class="stack actions" style="gap: 12px;">
       <button class="btn yellow big js-only" type="button" data-share-card><Icon name="share" size={24} />Share your trip</button>
       <a class="btn ghost" href="/">Done</a>

@@ -62,7 +62,7 @@ explorer.get('/trips/:id/done', requireRole('explorer', 'operator', 'admin'), as
   }
   return c.html(
     <Layout title="Trip complete" user={user} variant="bare" bodyClass="navy">
-      <TripDone trip={trip} summary={summary} map={map} logo={logo} host={new URL(c.env.APP_URL).host} appUrl={c.env.APP_URL} />
+      <TripDone trip={trip} summary={summary} map={map} logo={logo} appUrl={c.env.APP_URL} />
     </Layout>,
   )
 })
