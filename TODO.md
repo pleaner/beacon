@@ -15,7 +15,7 @@ Native apps, in order. See `docs/native-plan.md`.
 - [ ] Android: create the Firebase project and set `FCM_SERVICE_ACCOUNT`, so phones get pushes when the app is closed.
 - [ ] Android: make a release signing key, add its SHA-1 to an Android OAuth client in Google Cloud, and publish to Play internal testing.
 - [ ] Android: run a real hike on a Samsung phone to check it keeps tracking with the screen off.
-- [ ] Android: voice notes and photos in chat, the end-of-trip share card, and the brief and GPX for searchers are web-only for now.
+- [ ] Android: voice notes and photos in chat, and the brief and GPX for searchers, are web-only for now.
 - [ ] iOS app, explorer side then operator side, with the Live Activity.
 - [ ] Apple Watch: an emergency alert from the wrist, so an explorer can call for help without taking the phone out, and see "are you okay?" and help alerts on the watch.
 - [ ] Fall detection, recording first, alerts after.

@@ -20,6 +20,11 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Base64
+import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -67,6 +72,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -77,6 +83,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -698,11 +705,50 @@ fun BackScreen(go: (Screen) -> Unit) {
         GButton(if (work.busy) "Ending…" else "Yes, I'm back", icon = "check", big = true, enabled = !work.busy) {
             work.run(scope, { Api.post("/api/trips/$id/back"); Store.me = Api.get("/api/me") }) {
                 TripService.stop(context)
-                go(Screen.HomeNotice("Welcome back. Your trip is closed."))
+                go(Screen.Done(id))
             }
         }
         GButton("Not yet", Btn.Outline) { go(Screen.Trip) }
     }
+}
+
+// After "I'm back": the web's trip card, with its map, confetti and share button.
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun DoneScreen(id: String, go: (Screen) -> Unit) {
+    val leave = { go(Screen.HomeNotice("Welcome back. Your trip is closed.")) }
+    var loading by remember { mutableStateOf(true) }
+    BackHandler { leave() }
+    SystemBars(true)
+    Box(Modifier.fillMaxSize().background(Navy).statusBarsPadding().navigationBarsPadding()) {
+        AndroidView(modifier = Modifier.fillMaxSize(), factory = { c ->
+            WebView(c).apply {
+                setBackgroundColor(Navy.toArgb())
+                settings.javaScriptEnabled = true
+                // WebView has no navigator.share, so app.js hands the card here.
+                addJavascriptInterface(object {
+                    @JavascriptInterface fun share(dataUrl: String, text: String) = shareCard(c, dataUrl, text)
+                }, "GuardianApp")
+                webViewClient = object : WebViewClient() {
+                    // "Done" is the page's only link, and a trip that isn't closed redirects home.
+                    override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean { leave(); return true }
+                    override fun onPageFinished(v: WebView, url: String) { loading = false }
+                }
+                loadUrl("${BuildConfig.API_URL}/trips/$id/done", mapOf("authorization" to "Bearer ${Store.token}"))
+            }
+        })
+        // The server fetches the map tiles before it answers, which takes a few seconds.
+        if (loading) Text("Drawing your route…", Modifier.align(Alignment.Center), color = Color.White)
+    }
+}
+
+fun shareCard(c: Context, dataUrl: String, text: String) {
+    val file = File(c.cacheDir, "photos/trip-card.png").apply { parentFile?.mkdirs(); writeBytes(Base64.decode(dataUrl.substringAfter(','), Base64.DEFAULT)) }
+    val send = Intent(Intent.ACTION_SEND).setType("image/png")
+        .putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(c, "${c.packageName}.files", file))
+        .putExtra(Intent.EXTRA_TEXT, text)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    c.startActivity(Intent.createChooser(send, null))
 }
 
 // The help screen: the three things someone who called for help needs to know, a way to cancel, and the chat.
