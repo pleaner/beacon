@@ -678,6 +678,12 @@
     const ready = cardPng().catch(() => null)
     $('[data-share-card]').addEventListener('click', async () => {
       const file = await ready
+      // The Android app's WebView has no navigator.share, so the app shares the card itself.
+      if (file && window.GuardianApp) {
+        const r = new FileReader()
+        r.onload = () => GuardianApp.share(r.result, `${text} ${url}`)
+        return r.readAsDataURL(file)
+      }
       if (file && navigator.canShare && navigator.canShare({ files: [file] }) && (await share({ files: [file], text: `${text} ${url}` }))) return
       // No file sharing (most desktops): save the image instead.
       if (file) { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; a.click() }
