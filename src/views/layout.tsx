@@ -1,5 +1,6 @@
 import { raw } from 'hono/html'
 import type { FC, PropsWithChildren } from 'hono/jsx'
+import { APP_VERSION } from '../lib/constants'
 import type { User } from '../lib/db'
 import { Icon } from './icons'
 
@@ -23,7 +24,10 @@ const FONTS =
 export const Layout: FC<Props> = ({ title, user, bodyAttrs = {}, variant, bodyClass, current, helpCount, children }) => {
   const isOps = user?.role === 'operator' || user?.role === 'admin'
   const v: Variant = variant ?? (isOps ? 'ops' : 'app')
-  const cls = [bodyClass, v === 'ops' ? 'ops' : ''].filter(Boolean).join(' ')
+  // Operators and admins switch between the regular app, the board and messages from a bar along the bottom.
+  // Never on bare pages: flows and the help screen keep the whole screen.
+  const tab = !isOps || v === 'bare' ? null : v === 'app' ? 'travel' : current === 'messages' ? 'messages' : current === 'board' ? 'trips' : 'none'
+  const cls = [bodyClass, v === 'ops' ? 'ops' : '', tab ? 'has-tabs' : ''].filter(Boolean).join(' ')
   return (
     <html lang="en">
       <head>
@@ -51,6 +55,8 @@ export const Layout: FC<Props> = ({ title, user, bodyAttrs = {}, variant, bodyCl
         {v === 'app' && user && <AppMenu user={user} />}
         {v === 'ops' && <OpsBar user={user!} title={title} current={current} helpCount={helpCount} />}
         {children}
+        {tab && <OpsTabs tab={tab} helpCount={helpCount} />}
+        <div class="alpha-ribbon" aria-hidden="true">{APP_VERSION}</div>
       </body>
     </html>
   )
@@ -78,7 +84,6 @@ const AppBar: FC<{ user: User | null }> = ({ user }) => (
 
 // The explorer menu. Same sheet markup as the operator one, so it reuses that CSS and JS.
 const AppMenu: FC<{ user: User }> = ({ user }) => {
-  const isOps = user.role === 'operator' || user.role === 'admin'
   return (
     <div class="sheet-wrap" id="menu" data-menu>
       <a class="scrim" href="#" aria-label="Close menu" data-menu-close></a>
@@ -102,12 +107,6 @@ const AppMenu: FC<{ user: User }> = ({ user }) => {
             <Icon name="paw" size={18} />
             <span class="grow">My pets</span>
           </a>
-          {isOps && (
-            <a class="item" href="/board">
-              <Icon name="board" size={18} />
-              <span class="grow">Board</span>
-            </a>
-          )}
         </div>
         <div class="foot">
           <form method="post" action="/logout">
@@ -119,6 +118,22 @@ const AppMenu: FC<{ user: User }> = ({ user }) => {
         </div>
       </nav>
     </div>
+  )
+}
+
+const OpsTabs: FC<{ tab: string; helpCount?: number }> = ({ tab, helpCount }) => {
+  const t = (key: string, href: string, icon: Parameters<typeof Icon>[0]['name'], label: string, badge?: number) => (
+    <a href={href} aria-current={tab === key ? 'page' : undefined}>
+      <span class="ic"><Icon name={icon} size={24} />{badge ? <span class="count-badge">{badge}</span> : null}</span>
+      <span>{label}</span>
+    </a>
+  )
+  return (
+    <nav class="ops-tabs" aria-label="Sections">
+      {t('travel', '/', 'hike', 'Travel')}
+      {t('trips', '/board', 'board', 'Active trips', helpCount)}
+      {t('messages', '/board/messages', 'chat', 'Messages')}
+    </nav>
   )
 }
 
@@ -165,7 +180,6 @@ const OpsBar: FC<{ user: User; title: string; current?: string; helpCount?: numb
           <div class="body">
             <span class="group">Operations</span>
             {item('/board', 'board', 'board', 'Board', helpCount)}
-            {isAdmin && item('/', 'activities', 'hike', 'My activities')}
             {isAdmin && (
               <>
                 <div class="sep"></div>

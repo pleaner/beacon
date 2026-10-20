@@ -18,6 +18,9 @@ export const AREAS = {
 } as const
 export type Area = keyof typeof AREAS
 
+// Shown in the corner ribbon while Guardian is in alpha. The Android app's versionName matches it.
+export const APP_VERSION = 'Alpha v0.1'
+
 export const EXTEND_OPTIONS_MINUTES = [30, 60, 120, 240] as const
 
 // Activities where searchers look for gear before the person, and what to call it.

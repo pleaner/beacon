@@ -1,6 +1,6 @@
 import type { FC } from 'hono/jsx'
 import { ACTIVITIES, LANGUAGES } from '../lib/constants'
-import { MAX_MESSAGE, signalLabel, type Message, type Position, type User } from '../lib/db'
+import { MAX_MESSAGE, signalLabel, type Message, type MessageThread, type Position, type User } from '../lib/db'
 import { formatPhone } from '../lib/phone'
 import { activityName, ADMIN_STATUSES, tripLine, tripPlace, type Companion, type OpenTripRow, type Trip } from '../lib/trips'
 import { Icon, type IconName } from './icons'
@@ -73,6 +73,32 @@ export const Board: FC<{ rows: BoardRow[]; counts: Record<string, number>; statu
     </main>
   )
 }
+
+export const Messages: FC<{ threads: MessageThread[]; now: number }> = ({ threads, now }) => (
+  <main>
+    <div class="row" style="justify-content: space-between; align-items: baseline;">
+      <h1 class="display">Messages</h1>
+      <span class="muted" style="font-size: 13px;">Refreshes every 30 s</span>
+    </div>
+    {threads.length === 0 && <p class="lead">No messages on open trips.</p>}
+    {threads.map((t) => (
+      <a class={`trip-row ${t.status}`} href={`/board/trips/${t.trip_id}#messages`}>
+        <div class="l1">
+          <span class={`pill ${t.status}`}>{t.status}</span>
+          <strong>{t.user_name}</strong>
+          <span class="muted" style="font-size: 13px;">{ago(t.last_at, now)}</span>
+          <Icon name="chev" size={18} />
+        </div>
+        <div class="l2"><Icon name={ICON[t.activity] ?? 'other'} size={18} /><span>{tripLine(t as unknown as Trip)}</span></div>
+        <div class="l3">
+          <Icon name="chat" size={16} />
+          <span class="msg-preview"><b>{t.last_author_role === 'explorer' ? t.user_name.split(' ')[0] : t.last_author_name}:</b> {t.last_body || (t.last_media_type?.startsWith('audio/') ? 'Voice note' : t.last_media_type ? 'Photo' : '')}</span>
+          {t.count > 1 && <span class="count-badge">{t.count}</span>}
+        </div>
+      </a>
+    ))}
+  </main>
+)
 
 const TripRow: FC<{ r: BoardRow; now: number }> = ({ r, now }) => (
   <a class={`trip-row ${r.status}`} href={`/board/trips/${r.id}`}>
@@ -163,7 +189,7 @@ export const MessageMedia: FC<{ tripId: string; m: Message }> = ({ tripId, m }) 
 }
 
 export const Chat: FC<{ tripId: string; messages: Message[]; placeholder: string; me: 'explorer' | 'operator' }> = ({ tripId, messages, placeholder, me }) => (
-  <section class="card chat" data-chat={tripId} data-me={me}>
+  <section class="card chat" id="messages" data-chat={tripId} data-me={me}>
     <h2>Messages</h2>
     <ul class="list" data-msgs>
       {messages.map((m) => (

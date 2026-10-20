@@ -471,3 +471,25 @@ input:not([type=range]), select, textarea { transition: border-color .15s ease, 
 main.done { padding: env(safe-area-inset-top) 0 calc(24px + env(safe-area-inset-bottom)); gap: 12px; }
 main.done .actions { padding: 0 20px; }
 main.done .btn.ghost { color: #fff; }
+
+/* Alpha: a ribbon across the top-left corner of every page. */
+.alpha-ribbon { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: -30px; z-index: 1000; width: 112px; padding: 2px 0; transform: rotate(-45deg);
+  background: var(--red); color: #fff; font: 700 9px/1.2 var(--body); letter-spacing: .08em; text-transform: uppercase; text-align: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,.25); pointer-events: none; }
+
+/* Operators' bottom bar: Travel, Active trips, Messages. */
+.ops-tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; background: #fff; border-top: 1px solid var(--zb);
+  padding-bottom: env(safe-area-inset-bottom); }
+.ops-tabs a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px 10px; min-height: 60px;
+  text-decoration: none; color: var(--zm); font-size: 12px; font-weight: 600; }
+.ops-tabs a[aria-current="page"] { color: var(--navy); }
+.ops-tabs a[aria-current="page"] .ic { background: var(--navy-t); }
+.ops-tabs .ic { position: relative; display: flex; align-items: center; justify-content: center; width: 56px; height: 30px; border-radius: 15px; }
+.ops-tabs .ic .count-badge { position: absolute; top: -4px; right: 6px; }
+body.has-tabs { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+.msg-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+/* Room for the ribbon: the bars start a little further in so it only clips their empty corner. */
+.ops-bar { padding-left: 40px; }
+.appbar .inner { padding-left: 40px; }
+/* Opened from Messages: land on the chat below the sticky operator bar, not under it. */
+#messages { scroll-margin-top: 76px; }

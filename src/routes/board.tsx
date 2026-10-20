@@ -1,9 +1,9 @@
 import { Hono } from 'hono'
 import type { AppEnv } from '../env'
-import { getUserById, lastPositionsByTrip, listMessages, listPositions } from '../lib/db'
+import { getUserById, lastPositionsByTrip, listMessages, listMessageThreads, listPositions } from '../lib/db'
 import { requireRole } from '../lib/middleware'
 import { getTrip, listCompanions, listOpenTrips, tripLine, tripPlace } from '../lib/trips'
-import { Board, Brief, STATUSES, TripDetail } from '../views/board'
+import { Board, Brief, Messages, STATUSES, TripDetail } from '../views/board'
 import { Layout } from '../views/layout'
 
 export const board = new Hono<AppEnv>()
@@ -29,6 +29,16 @@ board.get('/board', async (c) => {
   return c.html(
     <Layout title="Board" user={c.var.user} bodyAttrs={attrs} current="board" helpCount={counts.help}>
       <Board rows={rows} counts={counts} status={status} q={q} now={Date.now()} />
+    </Layout>,
+  )
+})
+
+// Every open trip's chat in one list, newest first. Each row opens the trip, scrolled to its messages.
+board.get('/board/messages', async (c) => {
+  const threads = await listMessageThreads(c.env.DB)
+  return c.html(
+    <Layout title="Messages" user={c.var.user} bodyAttrs={{ 'data-refresh': '30' }} current="messages">
+      <Messages threads={threads} now={Date.now()} />
     </Layout>,
   )
 })
