@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -53,7 +54,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -396,7 +399,7 @@ fun Page(background: Color = Ground, gap: Dp = 20.dp, top: Dp = 24.dp, content: 
 // The explorer app bar: navy, the badge, GUARDIAN / SARZA SEARCH & RESCUE, a yellow strip below.
 @Composable
 fun AppBar(menu: List<Pair<String, () -> Unit>> = emptyList()) = Column(Modifier.background(Navy).statusBarsPadding()) {
-    Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 52.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
         Logo(38.dp)
         Column(Modifier.padding(start = 10.dp).weight(1f)) {
             Text("GUARDIAN", color = Color.White, fontFamily = Display, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, lineHeight = 24.sp, letterSpacing = .02.em)
@@ -557,4 +560,16 @@ fun ago(ms: Long): String {
 fun formatPhone(p: String): String = Regex("^\\+27(\\d{2})(\\d{3})(\\d{4})$").find(p)?.let { "+27 ${it.groupValues[1]} ${it.groupValues[2]} ${it.groupValues[3]}" } ?: p
 
 val ACTIVITY_ICON = mapOf("hike" to "hike", "run" to "run", "climb" to "climb", "paraglide" to "paraglide", "mtb" to "mtb", "other" to "other")
+// The build's corner ribbon. Only text, so touches pass through to the screen.
+@Composable
+// Below the status bar, tucked into the app's top-left corner; the top bars start a little further in to make room.
+fun AlphaRibbon() = Box(Modifier.statusBarsPadding().size(64.dp).clipToBounds()) {
+    Text(
+        "ALPHA v${BuildConfig.VERSION_NAME}",
+        // requiredWidth wider than the box centres the text on it, so x here is measured from the box's middle.
+        Modifier.offset((-4).dp, 22.dp).requiredWidth(100.dp).rotate(-45f).background(Red).padding(vertical = 1.dp),
+        color = Color.White, fontSize = 7.sp, fontWeight = FontWeight.Bold, letterSpacing = .08.em, textAlign = TextAlign.Center,
+    )
+}
+
 val ACTIVITY_NOUN = mapOf("hike" to "hike", "run" to "run", "climb" to "climb", "paraglide" to "flight", "mtb" to "ride", "other" to "trip")

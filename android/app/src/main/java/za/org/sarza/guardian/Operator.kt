@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -74,15 +75,13 @@ private fun OpsBar(title: String, go: (Screen) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val name = Store.me?.optJSONObject("user")?.optString("name").orEmpty()
     Column(Modifier.background(Color.White).statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 52.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box {
                 Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).border(1.dp, ZB, RoundedCornerShape(10.dp)).clickable { open = true }, contentAlignment = Alignment.Center) {
                     GIcon("menu", Z9, 22.dp)
                 }
                 DropdownMenu(open, { open = false }) {
                     DropdownMenuItem({ Text("Board") }, { open = false; go(Screen.Board) })
-                    // Admins plan their own trips from the explorer screens.
-                    if (Store.role == "admin") DropdownMenuItem({ Text("My activities") }, { open = false; go(Screen.Home) })
                     DropdownMenuItem({ Text("Sign out") }, {
                         open = false
                         work.run(scope, { runCatching { Api.post("/api/logout") } }) { Store.signOut(); go(Screen.Welcome) }
@@ -200,6 +199,75 @@ private fun TripRow(t: JSONObject, onClick: () -> Unit) {
             if (last != null && !last.isNull("battery")) {
                 GIcon("battery", ZM, 14.dp, modifier = Modifier.padding(start = 6.dp))
                 Text("${last.optInt("battery")}%", color = ZM, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun MessagesScreen(go: (Screen) -> Unit) {
+    var threads by remember { mutableStateOf<JSONArray?>(null) }
+    var offline by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val r = withContext(Dispatchers.IO) { runCatching { Api.get("/api/board/messages").getJSONArray("threads") } }
+            r.onSuccess { threads = it }
+            offline = r.isFailure
+            if ((r.exceptionOrNull() as? Api.Failed)?.status == 401) { Store.signOut(); go(Screen.Welcome); return@LaunchedEffect }
+            delay(30_000)
+        }
+    }
+    OpsPage("Messages", go) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            DisplayText("Messages", modifier = Modifier.weight(1f))
+            Text("Refreshes every 30 s", color = Muted, fontSize = 13.sp)
+        }
+        if (offline) Banner(RedT, RedInk) { Text("No connection. Showing what we had.", fontWeight = FontWeight.SemiBold) }
+        val all = threads?.let { a -> List(a.length()) { a.getJSONObject(it) } }
+        if (all == null) Text("Loading…", color = Muted)
+        else if (all.isEmpty()) Text("No messages on open trips.", color = Muted)
+        for (t in all.orEmpty()) ThreadRow(t) { go(Screen.BoardTrip(t.getString("trip_id"))) }
+    }
+}
+
+@Composable
+private fun ThreadRow(t: JSONObject, onClick: () -> Unit) {
+    val help = t.optString("status") == "help"
+    val shape = RoundedCornerShape(12.dp)
+    val body = t.optString("last_body").takeUnless { t.isNull("last_body") || it.isEmpty() }
+        ?: t.optString("last_media_type").let { if (it.startsWith("image/")) "Photo" else if (it.startsWith("audio/")) "Voice note" else "" }
+    val who = if (t.optString("last_author_role") == "operator") "SARZA" else t.optString("user_name").substringBefore(' ')
+    Column(
+        Modifier.fillMaxWidth().clip(shape).background(if (help) RedT else Color.White).border(1.dp, if (help) Red else ZB, shape).clickable(onClick = onClick).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Pill(t.optString("status"))
+            Text(t.optString("user_name"), Modifier.weight(1f), color = Z9, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Text(ago(t.optLong("last_at")), color = ZM, fontSize = 13.sp)
+        }
+        Text(t.optString("line"), color = ZM, fontSize = 14.sp)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GIcon("chat", ZM, 16.dp)
+            Text("$who: $body", Modifier.weight(1f), color = Z9, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text("${t.optInt("count")}", color = ZM, fontSize = 13.sp)
+        }
+    }
+}
+
+// The operator's tabs along the bottom: the explorer app, the board, and chat threads.
+@Composable
+fun OpsTabs(current: Screen, go: (Screen) -> Unit) = Column(Modifier.background(Color.White).navigationBarsPadding()) {
+    Box(Modifier.fillMaxWidth().height(1.dp).background(ZB))
+    Row(Modifier.fillMaxWidth().height(60.dp)) {
+        for ((screen, icon, label) in listOf(Triple(Screen.Home, "hike", "Travel"), Triple(Screen.Board, "board", "Active trips"), Triple(Screen.Messages, "chat", "Messages"))) {
+            val on = current == screen || (screen == Screen.Home && current is Screen.HomeNotice)
+            Column(
+                Modifier.weight(1f).fillMaxSize().clickable { if (!on) go(screen) },
+                verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                GIcon(icon, if (on) Navy else ZM, 22.dp)
+                Text(label, color = if (on) Navy else ZM, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.SemiBold)
             }
         }
     }

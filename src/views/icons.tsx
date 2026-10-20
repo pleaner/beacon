@@ -36,6 +36,7 @@ const PATHS = {
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12 H21"/><path d="M12 3 C15 6 15 18 12 21 C9 18 9 6 12 3 Z"/>',
   cake: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M4 15.5 C6 17 8 14 10 15.5 C12 17 14 14 16 15.5 C18 17 20 15.5 20 15.5"/><path d="M12 11 V7.5"/><path d="M12 3 C13 4.2 13 5.5 12 5.5 C11 5.5 11 4.2 12 3 Z"/>',
   plan: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4 V3 H15 V4"/><path d="M9 10 H15"/><path d="M9 14 H13"/>',
+  chat: '<path d="M4 5.5 C4 4.7 4.7 4 5.5 4 H18.5 C19.3 4 20 4.7 20 5.5 V15 C20 15.8 19.3 16.5 18.5 16.5 H9 L5 20 V16.5 H5.5 C4.7 16.5 4 15.8 4 15 Z"/>',
   x: '<path d="M6 6 L18 18"/><path d="M18 6 L6 18"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11 C5.5 14.6 8.4 17.5 12 17.5 C15.6 17.5 18.5 14.6 18.5 11"/><path d="M12 17.5 V21"/>',
   plus: '<path d="M12 5 V19"/><path d="M5 12 H19"/>',

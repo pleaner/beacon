@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 import type { AppEnv } from '../env'
 import { hashToken, newToken } from '../lib/auth'
 import { ACTIVITIES, AREAS, BLOOD_TYPES, GEAR, GENDERS, LANGUAGES, RELATIONS, type Activity, type Area } from '../lib/constants'
-import { addMessage, addSubscription, deleteSubscription, getChecklist, getMessageMedia, getSetting, getUserById, insertPositions, lastPositionsByTrip, listMessages, listPositions, MAX_MESSAGE, SIGNALS, updateUser, type User } from '../lib/db'
+import { addMessage, addSubscription, deleteSubscription, listMessageThreads, getChecklist, getMessageMedia, getSetting, getUserById, insertPositions, lastPositionsByTrip, listMessages, listPositions, MAX_MESSAGE, SIGNALS, updateUser, type User } from '../lib/db'
 import { done, num, readBody, requireApiRole, str, wantsJson, type Body } from '../lib/middleware'
 import { normalizePhone } from '../lib/phone'
 import { verifyGoogleToken } from '../lib/oauth'
@@ -62,8 +62,7 @@ api.post('/profile', async (c) => {
   const user = c.var.user
   // Accounts come from signing in with Google or Apple; this only fills in the profile.
   if (!user) return wantsJson(c) ? c.json({ error: 'Not signed in' }, 401) : c.redirect('/login', 303)
-  // Admins plan their own trips too, so they keep a profile; operators only run the board.
-  if (user.role === 'operator') return c.json({ error: 'Forbidden' }, 403)
+  // Operators and admins plan their own trips from Travel too, so everyone keeps a profile. Saving never changes the role.
   const body = await readBody(c)
   const name = str(body, 'name')
   const phone = normalizePhone(str(body, 'phone'), str(body, 'phone_country'))
@@ -438,6 +437,11 @@ api.get('/board', requireApiRole('operator', 'admin'), async (c) => {
   const trips = await listOpenTrips(c.env.DB)
   const last = await lastPositionsByTrip(c.env.DB, trips.map((t) => t.id))
   return c.json({ trips: trips.map((t) => ({ ...t, place: tripPlace(t), line: tripLine(t), last: last.get(t.id) ?? null })) })
+})
+
+api.get('/board/messages', requireApiRole('operator', 'admin'), async (c) => {
+  const threads = await listMessageThreads(c.env.DB)
+  return c.json({ threads: threads.map((t) => ({ ...t, line: tripLine(t as unknown as Trip) })) })
 })
 
 api.get('/board/trips/:id', requireApiRole('operator', 'admin'), async (c) => {

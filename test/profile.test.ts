@@ -217,33 +217,39 @@ describe('GET /photos/*', () => {
   })
 })
 
-describe('admins on activities', () => {
-  it('lets an admin keep a profile and plan from the activity home, but not an operator', async () => {
-    const a = await makeAdmin()
-    let res = await exports.default.fetch(`${BASE}/api/profile`, {
-      method: 'POST', headers: { cookie: cookieFor(a.token), 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'Admin Hiker', phone: '+27820000009', email: a.user.email, emergency_name: 'Zan', emergency_phone: '+27830000009' }),
-    })
-    expect(res.status).toBe(200)
-    expect((await getUserByTokenHash(env.DB, await hashToken(a.token)))).toMatchObject({ role: 'admin', name: 'Admin Hiker', emergency_name: 'Zan' })
-    const home = await (await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(a.token) } })).text()
-    expect(home).toContain('href="/trip/new?activity=hike"')
-    expect(home).toContain('href="/board"')
-
-    const o = await makeOperator()
-    res = await exports.default.fetch(`${BASE}/api/profile`, {
-      method: 'POST', headers: { cookie: cookieFor(o.token), 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'Op', phone: '+27820000008', email: o.user.email }),
-    })
-    expect(res.status).toBe(403)
+describe('operators and admins on Travel', () => {
+  it('lets operators and admins keep a profile and plan from the activity home, without changing their role', async () => {
+    for (const p of [await makeAdmin(), await makeOperator()]) {
+      const res = await exports.default.fetch(`${BASE}/api/profile`, {
+        method: 'POST', headers: { cookie: cookieFor(p.token), 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'On Duty', phone: '+27820000009', email: p.user.email, emergency_name: 'Zan', emergency_phone: '+27830000009' }),
+      })
+      expect(res.status).toBe(200)
+      expect((await getUserByTokenHash(env.DB, await hashToken(p.token)))).toMatchObject({ role: p.user.role, name: 'On Duty', emergency_name: 'Zan' })
+      const home = await (await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(p.token) } })).text()
+      expect(home).toContain('href="/trip/new?activity=hike"')
+    }
   })
 
-  it('puts My activities in the admin menu only', async () => {
-    const a = await makeAdmin()
+  it('gives operators and admins the bottom bar, with the tab for where they are, and never explorers', async () => {
     const o = await makeOperator()
-    const adminBoard = await (await exports.default.fetch(`${BASE}/board`, { headers: { cookie: cookieFor(a.token) } })).text()
-    expect(adminBoard).toMatch(/<a class="item" href="\/"[^>]*>.*My activities/s)
-    const opBoard = await (await exports.default.fetch(`${BASE}/board`, { headers: { cookie: cookieFor(o.token) } })).text()
-    expect(opBoard).not.toContain('My activities')
+    const tabs = async (path: string, token: string) => {
+      const html = await (await exports.default.fetch(`${BASE}${path}`, { headers: { cookie: cookieFor(token) } })).text()
+      return { nav: html.includes('class="ops-tabs"'), current: html.match(/<a href="([^"]+)" aria-current="page"><span class="ic">/)?.[1] }
+    }
+    expect(await tabs('/', o.token)).toEqual({ nav: true, current: '/' })
+    expect(await tabs('/board', o.token)).toEqual({ nav: true, current: '/board' })
+    expect(await tabs('/board/messages', o.token)).toEqual({ nav: true, current: '/board/messages' })
+    const e = await makeExplorer()
+    expect((await tabs('/', e.token)).nav).toBe(false)
+    // The old menu shortcuts are gone now the bar does the job.
+    const board = await (await exports.default.fetch(`${BASE}/board`, { headers: { cookie: cookieFor((await makeAdmin()).token) } })).text()
+    expect(board).not.toContain('My activities')
+  })
+
+  it('shows the alpha ribbon on every page, signed in or not', async () => {
+    expect(await (await exports.default.fetch(`${BASE}/login`)).text()).toContain('class="alpha-ribbon" aria-hidden="true">Alpha v0.1<')
+    const e = await makeExplorer()
+    expect(await (await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(e.token) } })).text()).toContain('Alpha v0.1')
   })
 })

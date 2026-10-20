@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
-import { insertPosition } from '../src/lib/db'
-import { getTrip, markOverdue, requestHelp, setStartPlace, startTrip, type NewTrip } from '../src/lib/trips'
+import { addMessage, insertPosition } from '../src/lib/db'
+import { getTrip, markBack, markOverdue, requestHelp, setStartPlace, startTrip, type NewTrip } from '../src/lib/trips'
 import { ago } from '../src/views/board'
 import { cookieFor, makeAdmin, makeExplorer, makeOperator } from './helpers'
 
@@ -248,5 +248,42 @@ describe('admin changes a trip status', () => {
     const page = (cookie: string) => exports.default.fetch(`${BASE}/board/trips/${old.id}`, { headers: { cookie } }).then((r) => r.text())
     expect(await page(a)).toContain('Trip status')
     expect(await page(o)).not.toContain('Trip status')
+  })
+})
+
+describe('Messages', () => {
+  it('lists the chat on each open trip, newest first, with the last message and a link to its thread', async () => {
+    const o = await makeOperator({ name: 'Ops Olwethu' })
+    const a = await makeExplorer({ name: 'Anele Dube' })
+    const b = await makeExplorer({ name: 'Bongi Khumalo' })
+    const c = await makeExplorer({ name: 'Closed Carl' })
+    const ta = await startTrip(env.DB, a.user.id, { ...base, return_by: Date.now() + 3_600_000 }, Date.now())
+    const tb = await startTrip(env.DB, b.user.id, { ...base, return_by: Date.now() + 3_600_000 }, Date.now())
+    const tc = await startTrip(env.DB, c.user.id, { ...base, return_by: Date.now() + 3_600_000 }, Date.now())
+    await startTrip(env.DB, (await makeExplorer()).user.id, { ...base, return_by: Date.now() + 3_600_000 }, Date.now())
+    await addMessage(env.DB, ta.id, a.user, 'Turning back at the saddle')
+    await addMessage(env.DB, tc.id, c.user, 'All done')
+    await markBack(env.DB, tc.id, Date.now())
+    await addMessage(env.DB, tb.id, b.user, 'Slipped, ankle sore')
+    await addMessage(env.DB, tb.id, o.user, 'Stay put, we are calling you')
+    await requestHelp(env.DB, tb.id, Date.now())
+
+    const html = await (await exports.default.fetch(`${BASE}/board/messages`, { headers: { cookie: cookieFor(o.token) } })).text()
+    const order = ['Bongi Khumalo', 'Anele Dube'].map((n) => html.indexOf(n))
+    expect(order[0]).toBeGreaterThan(-1)
+    expect(order[0]).toBeLessThan(order[1]!)
+    expect(html).toContain(`href="/board/trips/${tb.id}#messages"`)
+    expect(html).toContain('<b>Ops Olwethu:</b> Stay put, we are calling you')
+    expect(html).toContain('<span class="pill help">help</span>')
+    expect(html).not.toContain('Closed Carl')
+
+    const res = await exports.default.fetch(`${BASE}/api/board/messages`, { headers: { authorization: `Bearer ${o.token}` } })
+    const { threads } = (await res.json()) as { threads: Array<Record<string, unknown>> }
+    expect(threads.map((t) => t.user_name)).toEqual(['Bongi Khumalo', 'Anele Dube'])
+    expect(threads[0]).toMatchObject({ trip_id: tb.id, status: 'help', last_author_role: 'operator', last_author_name: 'Ops Olwethu', count: 2 })
+    expect(typeof threads[0]!.line).toBe('string')
+
+    expect((await exports.default.fetch(`${BASE}/api/board/messages`, { headers: { authorization: `Bearer ${a.token}` } })).status).toBe(403)
+    expect((await exports.default.fetch(`${BASE}/board/messages`, { headers: { cookie: cookieFor(a.token) } })).status).toBe(403)
   })
 })

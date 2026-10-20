@@ -261,6 +261,36 @@ export function getMessageMedia(db: DB, tripId: string, id: number) {
   return db.prepare('SELECT media_key, media_type FROM messages WHERE trip_id = ? AND id = ? AND media_key IS NOT NULL').bind(tripId, id).first<{ media_key: string; media_type: string }>()
 }
 // ponytail: every poll sends the newest 200 in full; send only newer ids if threads get long
+// The operators' Messages screen: every open trip that has a chat, with its latest message, newest first.
+export interface MessageThread {
+  trip_id: string
+  status: 'active' | 'overdue' | 'help'
+  activity: string
+  activity_text: string | null
+  start_place: string | null
+  area: string
+  user_name: string
+  last_body: string
+  last_author_role: 'explorer' | 'operator'
+  last_author_name: string
+  last_media_type: string | null
+  last_at: number
+  count: number
+}
+export async function listMessageThreads(db: DB): Promise<MessageThread[]> {
+  const sql = `SELECT t.id AS trip_id, t.status, t.activity, t.activity_text, t.start_place, t.area, u.name AS user_name,
+      m.body AS last_body, m.author_role AS last_author_role, COALESCE(a.name, 'SARZA') AS last_author_name,
+      m.media_type AS last_media_type, m.created_at AS last_at,
+      (SELECT COUNT(*) FROM messages c WHERE c.trip_id = t.id) AS count
+    FROM trips t
+    JOIN users u ON u.id = t.user_id
+    JOIN messages m ON m.id = (SELECT MAX(id) FROM messages x WHERE x.trip_id = t.id)
+    LEFT JOIN users a ON a.id = m.author_id
+    WHERE t.status != 'closed'
+    ORDER BY m.id DESC LIMIT 100`
+  return (await db.prepare(sql).all<MessageThread>()).results
+}
+
 export async function listMessages(db: DB, tripId: string): Promise<Message[]> {
   const sql = `SELECT * FROM (
     SELECT m.id, m.author_role, COALESCE(u.name, 'SARZA') AS author_name, m.body, m.media_type, m.created_at
