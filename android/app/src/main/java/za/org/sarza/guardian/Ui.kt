@@ -44,12 +44,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,8 +65,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -372,23 +370,12 @@ fun Logo(size: Dp) = Image(painterResource(R.drawable.sarza_logo), "SARZA", Modi
 
 // ---------- page frames ----------
 
-// Dark status bar icons on light pages, light ones on navy or red.
-@Composable
-fun SystemBars(darkBackground: Boolean) {
-    val view = LocalView.current
-    SideEffect {
-        val window = (view.context as? android.app.Activity)?.window ?: return@SideEffect
-        WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkBackground
-    }
-}
-
-// A plain full-height page: coloured background, scrolling, clear of the system bars and keyboard.
+// A plain full-height page under the app bar: coloured background, scrolling, clear of the navigation bar and keyboard.
 @Composable
 fun Page(background: Color = Ground, gap: Dp = 20.dp, top: Dp = 24.dp, content: @Composable ColumnScope.() -> Unit) {
-    SystemBars(background == Navy || background == Red)
     Surface(Modifier.fillMaxSize(), color = background) {
         Column(
-            Modifier.statusBarsPadding().navigationBarsPadding().imePadding().verticalScroll(rememberScrollState())
+            Modifier.navigationBarsPadding().imePadding().verticalScroll(rememberScrollState())
                 .padding(start = 20.dp, end = 20.dp, top = top, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(gap),
             content = content,
@@ -396,23 +383,30 @@ fun Page(background: Color = Ground, gap: Dp = 20.dp, top: Dp = 24.dp, content: 
     }
 }
 
-// The explorer app bar: navy, the badge, GUARDIAN / SARZA SEARCH & RESCUE, a yellow strip below.
+// The app bar on every screen: navy, the badge, GUARDIAN / SARZA SEARCH & RESCUE, a yellow strip below. Signed in, the menu
+// holds the profile and sign out.
 @Composable
-fun AppBar(menu: List<Pair<String, () -> Unit>> = emptyList()) = Column(Modifier.background(Navy).statusBarsPadding()) {
+fun AppBar(go: ((Screen) -> Unit)?) = Column(Modifier.background(Navy).statusBarsPadding()) {
     Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 52.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
         Logo(38.dp)
         Column(Modifier.padding(start = 10.dp).weight(1f)) {
             Text("GUARDIAN", color = Color.White, fontFamily = Display, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, lineHeight = 24.sp, letterSpacing = .02.em)
             Text("SARZA SEARCH & RESCUE", color = Yellow, fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .14.em)
         }
-        if (menu.isNotEmpty()) {
+        if (go != null) {
+            val scope = rememberCoroutineScope()
+            val work = rememberWork()
             var open by remember { mutableStateOf(false) }
             Box {
                 Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable { open = true }, contentAlignment = Alignment.Center) {
                     GIcon("menu", Color.White, 24.dp)
                 }
                 DropdownMenu(open, { open = false }) {
-                    for ((l, f) in menu) DropdownMenuItem({ Text(l) }, { open = false; f() })
+                    DropdownMenuItem({ Text("Your profile") }, { open = false; go(Screen.Profile) })
+                    DropdownMenuItem({ Text("Sign out") }, {
+                        open = false
+                        work.run(scope, { runCatching { Api.post("/api/logout") } }) { Store.signOut(); go(Screen.Welcome) }
+                    })
                 }
             }
         }
@@ -422,16 +416,12 @@ fun AppBar(menu: List<Pair<String, () -> Unit>> = emptyList()) = Column(Modifier
 
 // A screen under the app bar.
 @Composable
-fun AppPage(menu: List<Pair<String, () -> Unit>> = emptyList(), background: Color = Ground, content: @Composable ColumnScope.() -> Unit) {
-    SystemBars(true)
-    Surface(Modifier.fillMaxSize(), color = background) {
-        Column {
-            AppBar(menu)
-            Column(
-                Modifier.weight(1f).navigationBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp), content = content,
-            )
-        }
+fun AppPage(content: @Composable ColumnScope.() -> Unit) {
+    Surface(Modifier.fillMaxSize(), color = Ground) {
+        Column(
+            Modifier.navigationBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp), content = content,
+        )
     }
 }
 
@@ -442,8 +432,7 @@ fun FlowPage(
     step: Int, total: Int, title: String, lead: String?, onBack: () -> Unit,
     trailing: (@Composable () -> Unit)? = null, actions: @Composable ColumnScope.() -> Unit, content: @Composable ColumnScope.() -> Unit,
 ) = Surface(Modifier.fillMaxSize(), color = Color.White) {
-    SystemBars(false)
-    Column(Modifier.statusBarsPadding().navigationBarsPadding().imePadding()) {
+    Column(Modifier.navigationBarsPadding().imePadding()) {
         Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
             Box(Modifier.fillMaxWidth().height(48.dp)) {
                 Box(Modifier.size(44.dp).align(Alignment.CenterStart).clip(RoundedCornerShape(10.dp)).clickable(onClick = onBack), contentAlignment = Alignment.Center) {

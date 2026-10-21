@@ -1,5 +1,7 @@
 /* Guardian by SARZA. Brand: navy, red, yellow from the SARZA badge. */
 :root {
+  /* The standard header on every page: 64px bar and its 4px yellow strip. Full-height screens take it off. */
+  --header: 68px;
   --navy: #212c65; --red: #d2202f; --red-ink: #a3131f; --yellow: #fadf06; --green: #1e8a4c; --yellow-line: #e9cb00;
   --ink: #141a3a; --muted: #565d78; --line: #dadde6; --ground: #f3f4f7; --surface: #fff;
   --navy-t: #e6e8f1; --red-t: #fbe6e8; --yellow-t: #fef7c2;
@@ -130,7 +132,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--n
 .progress { display: flex; gap: 6px; padding: 10px 8px 0; max-width: 560px; margin: 0 auto; }
 .progress span { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
 .progress span.on { background: var(--navy); }
-.flow main { min-height: calc(100vh - 70px); min-height: calc(100dvh - 70px); gap: 24px; padding-top: 28px; padding-bottom: 0; }
+.flow main { min-height: calc(100vh - 70px - var(--header)); min-height: calc(100dvh - 70px - var(--header)); gap: 24px; padding-top: 28px; padding-bottom: 0; }
 .step { display: flex; flex-direction: column; gap: 24px; flex-grow: 1; }
 .js .step:not(.current) { display: none; }
 .step .spacer { flex-grow: 1; }
@@ -248,16 +250,16 @@ details.more[open] summary { margin-bottom: 10px; }
 .help-screen .facts span { display: block; margin-top: 2px; color: var(--muted); font-size: 15px; }
 .help-screen .facts span:empty { display: none; }
 .help-screen .facts .fix { margin-top: 6px; white-space: pre-line; font: 500 14px var(--mono); color: var(--navy); }
-main.help-screen { padding-top: calc(24px + env(safe-area-inset-top)); }
+main.help-screen { padding-top: 24px; }
 /* A call for help that hasn't reached us yet takes over the trip screen. */
 #help-pending:not([hidden]) { display: flex; flex-direction: column; gap: 12px; }
-body.help-pending .appbar, body.help-pending main > :not(#help-pending) { display: none; }
-body.help-pending main { padding-top: calc(24px + env(safe-area-inset-top)); }
+body.help-pending main > :not(#help-pending) { display: none; }
+body.help-pending main { padding-top: 24px; }
 /* Messages on the alert screen: a WhatsApp-style thread in our colours filling the rest of the screen, theirs on the left,
    yours on the right, with the composer pinned to the bottom. */
 /* The screen is one phone-height: the thread scrolls inside its own box, so nothing slides under the composer. */
-main.help-screen { height: 100vh; height: 100dvh; padding-bottom: 0; }
-.help-screen .chat { flex: 1; min-height: 260px; margin: 0 -20px; padding: 14px 12px 0; gap: 10px; border: 0; border-radius: 16px 16px 0 0; background: var(--navy-t); }
+main.help-screen { height: calc(100vh - var(--header)); height: calc(100dvh - var(--header)); padding-bottom: 0; }
+.help-screen .chat { flex: 1; min-height: 150px; margin: 0 -20px; padding: 14px 12px 0; gap: 10px; border: 0; border-radius: 16px 16px 0 0; background: var(--navy-t); }
 .help-screen .chat h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-align: center; }
 .help-screen .chat .list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; display: flex; flex-direction: column; gap: 6px; padding-bottom: 4px; }
 /* Few messages sit at the bottom, by the composer, and new ones push the rest up. */
@@ -279,7 +281,7 @@ main.help-screen { height: 100vh; height: 100dvh; padding-bottom: 0; }
   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12H19'/%3E%3Cpath d='M13 6L19 12L13 18'/%3E%3C/svg%3E") center / 22px no-repeat; }
 
 /* While a call is waiting to go out, "I'm fine, continue" sits at the bottom of the screen. */
-body.help-pending main { min-height: 100vh; min-height: 100dvh; padding-bottom: 0; }
+body.help-pending main { min-height: calc(100vh - var(--header)); min-height: calc(100dvh - var(--header)); padding-bottom: 0; }
 #help-pending:not([hidden]) { flex: 1; }
 .cancel-bar { margin-top: auto; position: sticky; bottom: 0; padding: 12px 0 calc(16px + env(safe-area-inset-bottom)); background: var(--ground); }
 /* A deep, muted red: clearly the alert, without the brand red's glare. */
@@ -303,10 +305,6 @@ body.help-pending main { min-height: 100vh; min-height: 100dvh; padding-bottom: 
 
 /* ------- operator app (shadcn-style chrome) ------- */
 .ops { background: var(--ground); }
-.ops-bar { position: sticky; top: 0; z-index: 10; height: 60px; padding: 0 12px; background: #fff; border-bottom: 1px solid var(--zb); display: flex; align-items: center; gap: 10px; }
-.ops-bar .menu-btn { width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--zb); background: #fff; display: flex; align-items: center; justify-content: center; color: var(--z9); }
-.ops-bar img { width: 30px; height: 30px; }
-.ops-bar .title { flex-grow: 1; font-weight: 600; color: var(--z9); }
 .me { width: 34px; height: 34px; border-radius: 17px; background: var(--navy); color: var(--yellow); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .ops main { padding: 20px 16px 32px; gap: 16px; max-width: 720px; }
 .ops .display { font-size: 36px; }
@@ -459,7 +457,7 @@ input:not([type=range]), select, textarea { transition: border-color .15s ease, 
 .brief-pos { width: 100%; border-collapse: collapse; font-size: 13px; }
 .brief-pos th, .brief-pos td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--za); }
 @media print {
-  .noprint { display: none !important; }
+  .noprint, .appbar, .sheet-wrap, .ops-tabs, .alpha-ribbon { display: none !important; }
   body { background: #fff; }
   main { max-width: none; padding: 0; gap: 12px; }
   .card { break-inside: avoid; border-color: #999; }
@@ -467,8 +465,8 @@ input:not([type=range]), select, textarea { transition: border-color .15s ease, 
   a { color: inherit; text-decoration: none; }
 }
 
-/* end of trip: no app bar, the card edge to edge on navy, so the screen reads as one picture */
-main.done { padding: env(safe-area-inset-top) 0 calc(24px + env(safe-area-inset-bottom)); gap: 12px; }
+/* end of trip: the card edge to edge on navy under the header, so the screen reads as one picture */
+main.done { padding: 0 0 calc(24px + env(safe-area-inset-bottom)); gap: 12px; }
 main.done .actions { padding: 0 20px; }
 main.done .btn.ghost { color: #fff; }
 
@@ -488,8 +486,7 @@ main.done .btn.ghost { color: #fff; }
 .ops-tabs .ic .count-badge { position: absolute; top: -4px; right: 6px; }
 body.has-tabs { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
 .msg-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
-/* Room for the ribbon: the bars start a little further in so it only clips their empty corner. */
-.ops-bar { padding-left: 40px; }
+/* Room for the ribbon: the header starts a little further in so it only clips its empty corner. */
 .appbar .inner { padding-left: 40px; }
 /* Opened from Messages: land on the chat below the sticky operator bar, not under it. */
-#messages { scroll-margin-top: 76px; }
+#messages { scroll-margin-top: 12px; }
