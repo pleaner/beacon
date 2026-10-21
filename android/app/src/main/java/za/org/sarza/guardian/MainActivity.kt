@@ -3,6 +3,7 @@ package za.org.sarza.guardian
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -36,7 +37,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The navy app bar sits under the status bar on every screen, so its icons are always light.
+        enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         screen = home()
         handle(intent)
         setContent {
@@ -48,6 +50,7 @@ class MainActivity : ComponentActivity() {
                 val tabs = Store.role != "explorer" && (s == Screen.Home || s is Screen.HomeNotice || s == Screen.Board || s == Screen.Messages)
                 Box(Modifier.fillMaxSize()) {
                     Column {
+                        AppBar(if (s == Screen.Welcome) null else go)
                         // The tabs sit on the navigation bar, so the screen above them doesn't pad for it again.
                         Box(Modifier.weight(1f).then(if (tabs) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier)) {
                             when (s) {

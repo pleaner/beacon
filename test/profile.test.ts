@@ -253,3 +253,19 @@ describe('operators and admins on Travel', () => {
     expect(await (await exports.default.fetch(`${BASE}/`, { headers: { cookie: cookieFor(e.token) } })).text()).toContain('Alpha v0.1')
   })
 })
+
+describe('the standard header', () => {
+  it('is on every page, with the menu once signed in and admin pages only for admins', async () => {
+    const has = (html: string) => ({ header: html.includes('<header class="appbar">'), menu: html.includes('data-menu-open'), admin: html.includes('href="/admin?tab=users"'), oldBar: html.includes('ops-bar') })
+    const page = async (path: string, token?: string) =>
+      has(await (await exports.default.fetch(`${BASE}${path}`, { headers: token ? { cookie: cookieFor(token) } : {} })).text())
+
+    expect(await page('/login')).toEqual({ header: true, menu: false, admin: false, oldBar: false })
+    const e = await makeExplorer()
+    for (const p of ['/', '/profile', '/trip/new?activity=hike', '/pets']) expect(await page(p, e.token)).toEqual({ header: true, menu: true, admin: false, oldBar: false })
+    const o = await makeOperator()
+    for (const p of ['/board', '/board/messages']) expect(await page(p, o.token)).toEqual({ header: true, menu: true, admin: false, oldBar: false })
+    const a = await makeAdmin()
+    for (const p of ['/board', '/admin?tab=users', '/']) expect(await page(p, a.token)).toEqual({ header: true, menu: true, admin: true, oldBar: false })
+  })
+})

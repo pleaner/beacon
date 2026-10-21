@@ -46,7 +46,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -174,7 +173,7 @@ fun HomeScreen(go: (Screen) -> Unit, notice: String? = null) {
         if (Store.trip != null) go(Screen.Trip)
     }
     val activities = me?.optJSONObject("activities") ?: JSONObject()
-    AppPage(menu = listOf("Your profile" to { go(Screen.Profile) })) {
+    AppPage {
         DisplayText("Hi ${me?.optJSONObject("user")?.optString("name")?.substringBefore(' ').orEmpty()}", size = 44.sp)
         if (notice != null) Banner(NavyT) { Text(notice, fontWeight = FontWeight.SemiBold) }
         if (alertsOff) Banner(YellowT, Ink, "bell", YellowLine) {
@@ -641,7 +640,7 @@ fun TripScreen(go: (Screen) -> Unit) {
         Store.updateTrip { it.put("return_by", r.getLong("return_by")).put("status", "active") }
     }) { trip = Store.trip; tick = System.currentTimeMillis(); TripService.poke(context) }
 
-    AppPage(menu = listOf("Your profile" to { go(Screen.Profile) })) {
+    AppPage {
         ErrorBanner(work.error)
         if (status == "overdue") Column(Modifier.fillMaxWidth().background(Red, RoundedCornerShape(14.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("ARE YOU OKAY?", color = Color.White, fontFamily = Display, fontWeight = FontWeight.ExtraBold, fontSize = 30.sp, lineHeight = 30.sp)
@@ -717,8 +716,7 @@ fun DoneScreen(id: String, go: (Screen) -> Unit) {
     val leave = { go(Screen.HomeNotice("Welcome back. Your trip is closed.")) }
     var loading by remember { mutableStateOf(true) }
     BackHandler { leave() }
-    SystemBars(true)
-    Box(Modifier.fillMaxSize().background(Navy).statusBarsPadding().navigationBarsPadding()) {
+    Box(Modifier.fillMaxSize().background(Navy).navigationBarsPadding()) {
         AndroidView(modifier = Modifier.fillMaxSize(), factory = { c ->
             WebView(c).apply {
                 setBackgroundColor(Navy.toArgb())
@@ -764,9 +762,8 @@ fun HelpScreen(t: JSONObject, alerted: Boolean, onUndo: () -> Unit, onCancelled:
     val queued = Store.queue().length()
     val last = Store.lastSent
     val stay = "If it's safe where you are, stay put."
-    SystemBars(false)
     Surface(Modifier.fillMaxSize(), color = Ground) {
-        Column(Modifier.statusBarsPadding().navigationBarsPadding().imePadding()) {
+        Column(Modifier.navigationBarsPadding().imePadding()) {
             Column(
                 Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),

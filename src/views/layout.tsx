@@ -51,9 +51,9 @@ export const Layout: FC<Props> = ({ title, user, bodyAttrs = {}, variant, bodyCl
         <script src="/app.js" defer></script>
       </head>
       <body class={cls || undefined} {...bodyAttrs}>
-        {v === 'app' && <AppBar user={user} />}
-        {v === 'app' && user && <AppMenu user={user} />}
-        {v === 'ops' && <OpsBar user={user!} title={title} current={current} helpCount={helpCount} />}
+        {/* One header on every page: the logo and name, and the menu on the right once someone is signed in. */}
+        <AppBar user={user} />
+        {user && <AppMenu user={user} current={current} />}
         {children}
         {tab && <OpsTabs tab={tab} helpCount={helpCount} />}
         <div class="alpha-ribbon" aria-hidden="true">{APP_VERSION}</div>
@@ -82,8 +82,14 @@ const AppBar: FC<{ user: User | null }> = ({ user }) => (
   </header>
 )
 
-// The explorer menu. Same sheet markup as the operator one, so it reuses that CSS and JS.
-const AppMenu: FC<{ user: User }> = ({ user }) => {
+// The one menu, for everyone signed in. Admins also get the admin pages; the board and messages are on the bottom tabs.
+const AppMenu: FC<{ user: User; current?: string }> = ({ user, current }) => {
+  const item = (href: string, key: string, icon: Parameters<typeof Icon>[0]['name'], label: string) => (
+    <a class="item" href={href} aria-current={current === key ? 'page' : undefined}>
+      <Icon name={icon} size={18} />
+      <span class="grow">{label}</span>
+    </a>
+  )
   return (
     <div class="sheet-wrap" id="menu" data-menu>
       <a class="scrim" href="#" aria-label="Close menu" data-menu-close></a>
@@ -99,14 +105,18 @@ const AppMenu: FC<{ user: User }> = ({ user }) => {
           </a>
         </div>
         <div class="body">
-          <a class="item" href="/profile">
-            <Icon name="user" size={18} />
-            <span class="grow">Profile</span>
-          </a>
-          <a class="item" href="/pets">
-            <Icon name="paw" size={18} />
-            <span class="grow">My pets</span>
-          </a>
+          {item('/profile', 'profile', 'user', 'Profile')}
+          {item('/pets', 'pets', 'paw', 'My pets')}
+          {user.role === 'admin' && (
+            <>
+              <div class="sep"></div>
+              <span class="group">Admin</span>
+              {item('/admin?tab=users', 'users', 'users', 'Users')}
+              {item('/admin?tab=checklists', 'checklists', 'list', 'Checklists')}
+              {item('/admin?tab=broadcast', 'broadcast', 'megaphone', 'Broadcast')}
+              {item('/admin?tab=settings', 'settings', 'settings', 'Settings')}
+            </>
+          )}
         </div>
         <div class="foot">
           <form method="post" action="/logout">
@@ -137,77 +147,3 @@ const OpsTabs: FC<{ tab: string; helpCount?: number }> = ({ tab, helpCount }) =>
   )
 }
 
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]!.toUpperCase())
-    .join('')
-
-const OpsBar: FC<{ user: User; title: string; current?: string; helpCount?: number }> = ({ user, title, current, helpCount }) => {
-  const isAdmin = user.role === 'admin'
-  const item = (href: string, key: string, icon: Parameters<typeof Icon>[0]['name'], label: string, badge?: number) => (
-    <a class="item" href={href} aria-current={current === key ? 'page' : undefined}>
-      <Icon name={icon} size={18} />
-      <span class="grow">{label}</span>
-      {badge ? <span class="count-badge">{badge}</span> : null}
-    </a>
-  )
-  return (
-    <>
-      <header class="ops-bar">
-        <a class="menu-btn" href="#menu" data-menu-open aria-label="Open menu" aria-controls="menu">
-          <Icon name="menu" size={20} />
-        </a>
-        <img src="/sarza-logo.png" alt="SARZA" />
-        <span class="title">{title}</span>
-        <span class="me" title={user.name}>{initials(user.name)}</span>
-      </header>
-      <div class="sheet-wrap" id="menu" data-menu>
-        <a class="scrim" href="#" aria-label="Close menu" data-menu-close></a>
-        <nav class="sheet" aria-label="Operator menu">
-          <div class="head">
-            <img src="/sarza-logo.png" alt="" />
-            <div class="grow">
-              <strong>Guardian</strong>
-              <small>{isAdmin ? 'Admin' : 'Operator'}</small>
-            </div>
-            <a class="icon-btn" href="#" aria-label="Close menu" data-menu-close>
-              <Icon name="x" size={18} />
-            </a>
-          </div>
-          <div class="body">
-            <span class="group">Operations</span>
-            {item('/board', 'board', 'board', 'Board', helpCount)}
-            {isAdmin && (
-              <>
-                <div class="sep"></div>
-                <span class="group">Admin</span>
-                {item('/admin?tab=users', 'users', 'users', 'Users')}
-                {item('/admin?tab=checklists', 'checklists', 'list', 'Checklists')}
-                {item('/admin?tab=broadcast', 'broadcast', 'megaphone', 'Broadcast')}
-                {item('/admin?tab=settings', 'settings', 'settings', 'Settings')}
-              </>
-            )}
-          </div>
-          <div class="foot">
-            <div class="who">
-              <span class="me">{initials(user.name)}</span>
-              <div>
-                <strong>{user.name}</strong>
-                <small>{user.email ?? ''}</small>
-              </div>
-            </div>
-            <form method="post" action="/logout">
-              <button class="item" type="submit">
-                <Icon name="logout" size={18} />
-                <span>Log out</span>
-              </button>
-            </form>
-          </div>
-        </nav>
-      </div>
-    </>
-  )
-}

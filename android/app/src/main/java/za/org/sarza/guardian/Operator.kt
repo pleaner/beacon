@@ -19,15 +19,12 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,49 +64,14 @@ private val ZA = Color(0xFFF4F4F5)
 
 private val TABS = listOf("" to "All", "help" to "Help", "overdue" to "Overdue", "active" to "Active")
 
-// The operator's top bar: menu, badge, the page name, and their initials.
-@Composable
-private fun OpsBar(title: String, go: (Screen) -> Unit) {
-    val scope = rememberCoroutineScope()
-    val work = rememberWork()
-    var open by remember { mutableStateOf(false) }
-    val name = Store.me?.optJSONObject("user")?.optString("name").orEmpty()
-    Column(Modifier.background(Color.White).statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 52.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box {
-                Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).border(1.dp, ZB, RoundedCornerShape(10.dp)).clickable { open = true }, contentAlignment = Alignment.Center) {
-                    GIcon("menu", Z9, 22.dp)
-                }
-                DropdownMenu(open, { open = false }) {
-                    DropdownMenuItem({ Text("Board") }, { open = false; go(Screen.Board) })
-                    DropdownMenuItem({ Text("Sign out") }, {
-                        open = false
-                        work.run(scope, { runCatching { Api.post("/api/logout") } }) { Store.signOut(); go(Screen.Welcome) }
-                    })
-                }
-            }
-            Logo(28.dp)
-            Text(title, Modifier.weight(1f), color = Z9, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-            Box(Modifier.size(36.dp).background(Navy, CircleShape), contentAlignment = Alignment.Center) {
-                Text(initials(name), color = Yellow, fontFamily = Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
-            }
-        }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(ZB))
-    }
-}
-
 fun initials(name: String) = name.split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1).uppercase() }
 
 @Composable
-private fun OpsPage(title: String, go: (Screen) -> Unit, content: @Composable ColumnScope.() -> Unit) = Surface(Modifier.fillMaxSize(), color = ZA) {
-    SystemBars(false)
-    Column {
-        OpsBar(title, go)
-        Column(
-            Modifier.weight(1f).navigationBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp), content = content,
-        )
-    }
+private fun OpsPage(content: @Composable ColumnScope.() -> Unit) = Surface(Modifier.fillMaxSize(), color = ZA) {
+    Column(
+        Modifier.navigationBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp), content = content,
+    )
 }
 
 @Composable
@@ -130,7 +92,7 @@ fun BoardScreen(go: (Screen) -> Unit) {
         }
     }
     val all = trips?.let { a -> List(a.length()) { a.getJSONObject(it) } }.orEmpty()
-    OpsPage("Board", go) {
+    OpsPage {
         Row(verticalAlignment = Alignment.Bottom) {
             DisplayText("Open trips", modifier = Modifier.weight(1f))
             Text("Refreshes every 30 s", color = Muted, fontSize = 13.sp)
@@ -217,7 +179,7 @@ fun MessagesScreen(go: (Screen) -> Unit) {
             delay(30_000)
         }
     }
-    OpsPage("Messages", go) {
+    OpsPage {
         Row(verticalAlignment = Alignment.Bottom) {
             DisplayText("Messages", modifier = Modifier.weight(1f))
             Text("Refreshes every 30 s", color = Muted, fontSize = 13.sp)
@@ -308,7 +270,7 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
             delay(15_000)
         }
     }
-    OpsPage("Trip", go) {
+    OpsPage {
         Row(Modifier.clickable { go(Screen.Board) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             GIcon("back", Z9, 16.dp)
             Text("Board", color = Z9, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
