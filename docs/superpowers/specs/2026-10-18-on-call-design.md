@@ -35,11 +35,17 @@ Today every overdue alert and every help call pushes to all operators and admins
 - **The call record.** A full record of everything that happens on the call: when it started, each alert and escalation, every accept and reject, every chat message with its time, and any other activity on the call as it goes along.
 - **Shift start.** The person going on shift gets a notification that their shift has begun, and an icon in their top bar shows they are on shift.
 - **Android.** Everything above is in the Android app too, not only the web.
+- **Admin area on Android.** The Android app learns the admin role and gets an admin area with three sections: Users, Calls, and On call. The On call section is the full page, with adding, removing and reordering people, and the two settings.
+- **Calls, including past ones.** The admin area (web and Android) has a Calls section listing every call, open and closed, newest first. Each opens its full record.
+- **Changes to on call are announced.** Every operator and admin gets a push when the on-call setup changes.
 
 ## My calls (Sean can overturn these)
 
+- **The admin role already exists.** Users already carry an `admin` role, and the web already has an admin area (Users, Checklists, Broadcast, Settings in the operator menu). On the web, Calls and On call join that menu for admins. On Android the admin role and area are new; until now Android has treated admins as operators.
+- **What counts as an on-call change.** Someone added, removed or reordered; someone going available or unavailable; a handover caused by that; either setting changing. Each sends one push to all operators and admins saying what changed and who is on shift now. The regular clock handover every 8 hours does not; that only sends the shift-start push to the person going on.
+- **What operators see.** Operators (web and Android) get an On call page in their menu: who is on now and until when, who is next, the list with availability, and their own switch. The admin area's On call section is the same page with the admin controls added. Calls stay admin-only; operators see a call's record on its trip page.
 - **Who manages the list.** Admins add, remove and reorder people. Any operator or admin on the list can change their own availability. Admins can also change anyone's availability, for someone who forgot.
-- **Where it lives.** A new "On call" item in the operator menu, visible to operators and admins. It shows who is on now and until when, who is next, the ordered list with each person's availability, and your own available/unavailable switch. Admin-only controls (add, remove, reorder) appear on the same page for admins. The two settings go on the existing admin settings form, next to the grace period.
+- **Where the settings live.** Shift length and non-response time sit on the On call page for admins, not on the general Settings tab, so everything about on call is in one place.
 - **Shift times.** Shifts are anchored to 06:00 Africa/Johannesburg. With 8 hours that's 06:00, 14:00, 22:00. Slot n of the day belongs to the next available person in the cycle. A mid-shift handover (someone goes unavailable) gives the rest of the current slot to the next available person and leaves later slots where they were. The builder picks how to compute the cycle so it stays stable when someone is skipped.
 - **Additive escalation.** People who were already alerted for a call keep it. Escalation adds the next person, it does not take the call away from the earlier ones. Someone who rejected is the exception: they get no more pushes for that call and can't accept it afterwards.
 - **End of the roster.** When every available person has rejected or timed out, the call goes to all operators and admins, as today, and the record says so.
@@ -51,7 +57,7 @@ Today every overdue alert and every help call pushes to all operators and admins
 - **A push that reaches no device.** If the push to the next person lands on none of their devices (no web push turned on, or FCM not set up), escalation moves past them at once instead of waiting out the timer, and the record says so. Being on shift doesn't require a working device; the page shows a warning beside anyone with none.
 - **Chat during a call.** Before anyone accepts, the explorer's chat messages push to everyone the call has reached. After an accept, they push only to the person who accepted. With no open call, chat pushes go to all operators and admins as today.
 - **Where Accept and Reject are.** On the trip page only. The alert opens the trip page. No action buttons on the notification itself.
-- **Where the record shows.** On the trip page of the board (web and Android), in time order, and kept after the trip ends.
+- **Where the record shows.** On the trip page of the board (web and Android), in time order, and in the admin Calls section, kept after the trip ends.
 - **Not recorded.** Roster changes and availability changes are not on any call record.
 - **Shift-start push.** Sent when a person goes on shift, whether by the clock or by a handover. Uses the existing push path (web push, and FCM on Android once configured).
 
@@ -70,5 +76,5 @@ Today every overdue alert and every help call pushes to all operators and admins
 - Table design for the roster, availability, calls and the call record.
 - How the current on-shift person is computed and how "went on shift" is detected for the shift-start push.
 - How the record merges stored events with chat messages.
-- The exact look of the On call page, the record, and the top-bar icon, within the existing design (navy, yellow buttons, the icon set in `src/views/icons.tsx` and `android/.../Icons.kt`).
+- The exact look of the On call page, the Calls list, the record, and the top-bar icon, within the existing design (navy, yellow buttons, the icon set in `src/views/icons.tsx` and `android/.../Icons.kt`).
 - API shape for the Android app.
