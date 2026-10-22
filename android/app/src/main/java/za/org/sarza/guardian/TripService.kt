@@ -91,6 +91,8 @@ class TripService : Service(), LocationListener {
         if (Store.helpPending == id) {
             try {
                 Api.post("/api/trips/$id/help")
+                // "I'm fine" was tapped while the call was on its way: take it back, or the server stays in help.
+                if (Store.helpPending != id) runCatching { Api.post("/api/trips/$id/cancel") }
                 Store.helpPending = null
                 refreshMe()
             } catch (e: Api.Failed) {

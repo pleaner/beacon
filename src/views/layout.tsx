@@ -82,7 +82,7 @@ const AppBar: FC<{ user: User | null }> = ({ user }) => (
   </header>
 )
 
-// The one menu, for everyone signed in. Admins also get the admin pages; the board and messages are on the bottom tabs.
+// The one menu, for everyone signed in. Operators and admins also get the sections from the bottom tabs, and admins the admin pages.
 const AppMenu: FC<{ user: User; current?: string }> = ({ user, current }) => {
   const item = (href: string, key: string, icon: Parameters<typeof Icon>[0]['name'], label: string) => (
     <a class="item" href={href} aria-current={current === key ? 'page' : undefined}>
@@ -105,6 +105,14 @@ const AppMenu: FC<{ user: User; current?: string }> = ({ user, current }) => {
           </a>
         </div>
         <div class="body">
+          {user.role !== 'explorer' && (
+            <>
+              {item('/', 'travel', 'hike', 'Travel')}
+              {item('/board', 'board', 'board', 'Active trips')}
+              {item('/board/messages', 'messages', 'chat', 'Messages')}
+              <div class="sep"></div>
+            </>
+          )}
           {item('/profile', 'profile', 'user', 'Profile')}
           {item('/pets', 'pets', 'paw', 'My pets')}
           {user.role === 'admin' && (
