@@ -25,6 +25,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,6 +64,9 @@ private val ZM = Color(0xFF71717A)
 private val ZB = Color(0xFFE4E4E7)
 private val ZA = Color(0xFFF4F4F5)
 
+// Set from every board, trip and on-call reply, so the top bar shows the chip while you're on shift.
+var onCall by mutableStateOf(false)
+
 private val TABS = listOf("" to "All", "help" to "Help", "overdue" to "Overdue", "active" to "Active")
 
 fun initials(name: String) = name.split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1).uppercase() }
@@ -84,8 +89,8 @@ fun BoardScreen(go: (Screen) -> Unit) {
     LaunchedEffect(Unit) {
         Guardian.registerForPush(context)
         while (true) {
-            val r = withContext(Dispatchers.IO) { runCatching { Api.get("/api/board").getJSONArray("trips") } }
-            r.onSuccess { trips = it }
+            val r = withContext(Dispatchers.IO) { runCatching { Api.get("/api/board") } }
+            r.onSuccess { trips = it.getJSONArray("trips"); onCall = it.optBoolean("on_call") }
             offline = r.isFailure
             if ((r.exceptionOrNull() as? Api.Failed)?.status == 401) { Store.signOut(); go(Screen.Welcome); return@LaunchedEffect }
             delay(30_000)
@@ -228,7 +233,7 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
     val scope = rememberCoroutineScope()
     LaunchedEffect(id, reload) {
         while (true) {
-            withContext(Dispatchers.IO) { runCatching { Api.get("/api/board/trips/$id") } }.onSuccess { detail = it }
+            withContext(Dispatchers.IO) { runCatching { Api.get("/api/board/trips/$id") } }.onSuccess { detail = it; onCall = it.optBoolean("on_call") }
             delay(15_000)
         }
     }
@@ -250,6 +255,38 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
             }
         }
         GButton("Phone $first ${formatPhone(u.optString("phone"))}", Btn.Red, "phone") { context.call(u.optString("phone")) }
+        ErrorBanner(work.error)
+        val calls = d.optJSONArray("calls") ?: JSONArray()
+        for (i in 0 until calls.length()) {
+            val call = calls.getJSONObject(i)
+            val cid = call.getString("id")
+            Card(if (call.optString("kind") == "help") "Help call" else "Overdue call") {
+                Text(
+                    when {
+                        !call.isNull("accepted_at") -> "Accepted by ${call.optString("accepted_name").ifEmpty { "someone" }}, ${hhmm(call.getLong("accepted_at"))}"
+                        !call.isNull("closed_at") -> "Closed ${hhmm(call.getLong("closed_at"))}. Nobody accepted."
+                        else -> "Open. Nobody has accepted yet."
+                    },
+                    color = Z9,
+                )
+                if (call.optBoolean("can_accept") || call.optBoolean("can_reject")) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (call.optBoolean("can_accept")) GButton("Accept", small = true, enabled = !work.busy, modifier = Modifier.weight(1f)) {
+                        work.run(scope, { Api.post("/api/board/calls/$cid/accept") }) { reload++ }
+                    }
+                    if (call.optBoolean("can_reject")) GButton("Reject", Btn.Outline, small = true, enabled = !work.busy, modifier = Modifier.weight(1f)) {
+                        confirm = "reject:$cid"
+                    }
+                }
+                val lines = call.getJSONArray("lines")
+                for (j in 0 until lines.length()) {
+                    val l = lines.getJSONObject(j)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(hhmm(l.getLong("at")), color = ZM, fontFamily = Mono, fontSize = 13.sp)
+                        Text(l.optString("text"), color = Z9, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
 
         val positions = d.getJSONArray("positions")
         val p = if (positions.length() > 0) positions.getJSONObject(0) else null
@@ -356,7 +393,6 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
                 }
             }
         }
-        ErrorBanner(work.error)
         if (status != "closed") {
             Card("Siren") {
                 Text("Makes $first's phone sound loudly, even on silent, so searchers nearby can hear it." +
@@ -370,6 +406,21 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
         }
     }
     confirm?.let { what ->
+        if (what.startsWith("reject:")) {
+            AlertDialog(
+                onDismissRequest = { confirm = null },
+                title = { Text("Reject this call?") },
+                text = { Text("It passes to the next person on call straight away, and you won't be able to accept it later.") },
+                confirmButton = {
+                    TextButton({
+                        confirm = null
+                        work.run(scope, { Api.post("/api/board/calls/${what.removePrefix("reject:")}/reject") }) { reload++ }
+                    }) { Text("Reject") }
+                },
+                dismissButton = { TextButton({ confirm = null }) { Text("Cancel") } },
+            )
+            return@let
+        }
         AlertDialog(
             onDismissRequest = { confirm = null },
             title = { Text(if (what == "siren") "Sound the siren?" else "Close this trip?") },
@@ -382,6 +433,88 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
             },
             dismissButton = { TextButton({ confirm = null }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+fun OnCallScreen(go: (Screen) -> Unit) {
+    var s by remember { mutableStateOf<JSONObject?>(null) }
+    var reload by remember { mutableIntStateOf(0) }
+    var adding by remember { mutableStateOf(false) }
+    val work = rememberWork()
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(reload) {
+        while (true) {
+            withContext(Dispatchers.IO) { runCatching { Api.get("/api/oncall") } }.onSuccess { s = it; onCall = it.getJSONObject("me").optBoolean("on_call") }
+            delay(30_000)
+        }
+    }
+    // The reply is the new state. Set it after the IO thread is done, on the main thread.
+    fun change(path: String, body: JSONObject) {
+        var reply: JSONObject? = null
+        work.run(scope, { reply = Api.post(path, body) }) { reply?.let { s = it; onCall = it.getJSONObject("me").optBoolean("on_call") } }
+    }
+    fun at(ms: Long) = "${android.text.format.DateFormat.format("EEE", ms)} ${hhmm(ms)}"
+    OpsPage {
+        DisplayText("On call")
+        val st = s ?: run { Text("Loading…", color = Muted); return@OpsPage }
+        val admin = Store.role == "admin"
+        val now = st.optJSONObject("on_now")
+        val me = st.getJSONObject("me")
+        ErrorBanner(work.error)
+        Card("On call now") {
+            if (now == null) Text("Nobody is on call. Alerts go to every operator and admin.", color = Z9)
+            else Text(now.optString("name") + (if (st.isNull("until")) ", with nobody else available to take over" else " until ${at(st.getLong("until"))}"),
+                color = Z9, fontWeight = FontWeight.Bold)
+            st.optJSONObject("next")?.takeIf { !st.isNull("until") }?.let { Text("Next: ${it.optString("name")} from ${at(st.getLong("until"))}", color = ZM) }
+            val h = st.optInt("shift_hours")
+            Text("Shifts of $h ${if (h == 1) "hour" else "hours"} from 06:00. An alert passes to the next person after ${st.optInt("no_response_minutes")} min with no answer.",
+                color = ZM, fontSize = 13.sp)
+        }
+        if (me.optBoolean("on_roster")) Card("You") {
+            val avail = me.optBoolean("available")
+            Text(if (avail) "You're available. Alerts can come to you." else "You're unavailable. You're skipped until you switch back.", color = Z9)
+            GButton(if (avail) "Make me unavailable" else "Make me available", if (avail) Btn.Outline else Btn.Navy, small = true, enabled = !work.busy) {
+                change("/api/oncall/availability", JSONObject().put("available", if (avail) "0" else "1"))
+            }
+        }
+        val roster = st.getJSONArray("roster")
+        Card("Order · ${roster.length()}") {
+            if (roster.length() == 0) Text("Nobody is on the list yet.", color = ZM)
+            for (i in 0 until roster.length()) {
+                val r = roster.getJSONObject(i)
+                val id = r.getString("user_id")
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(r.optString("name"), color = Z9, fontWeight = FontWeight.Bold)
+                    Text((if (r.optBoolean("on_now")) "On call now" else if (r.optBoolean("available")) "Available" else "Unavailable") +
+                        (if (r.optInt("devices") == 0) " · No device gets alerts" else ""), color = if (r.optInt("devices") == 0) RedInk else ZM, fontSize = 13.sp)
+                    if (admin) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        GButton("↑", Btn.Outline, small = true, enabled = !work.busy && i > 0, modifier = Modifier.weight(1f)) {
+                            change("/api/oncall/move", JSONObject().put("user_id", id).put("dir", "up"))
+                        }
+                        GButton("↓", Btn.Outline, small = true, enabled = !work.busy && i < roster.length() - 1, modifier = Modifier.weight(1f)) {
+                            change("/api/oncall/move", JSONObject().put("user_id", id).put("dir", "down"))
+                        }
+                        GButton(if (r.optBoolean("available")) "Unavailable" else "Available", Btn.Outline, small = true, enabled = !work.busy, modifier = Modifier.weight(2f)) {
+                            change("/api/oncall/availability", JSONObject().put("user_id", id).put("available", if (r.optBoolean("available")) "0" else "1"))
+                        }
+                        GButton("", Btn.Outline, "x", small = true, enabled = !work.busy, modifier = Modifier.weight(1f)) {
+                            change("/api/oncall/remove", JSONObject().put("user_id", id))
+                        }
+                    }
+                }
+            }
+            val candidates = st.optJSONArray("candidates") ?: JSONArray()
+            if (admin && candidates.length() > 0) Box {
+                GButton("Add someone", Btn.Outline, "plus", small = true, enabled = !work.busy) { adding = true }
+                DropdownMenu(adding, { adding = false }) {
+                    for (i in 0 until candidates.length()) {
+                        val u = candidates.getJSONObject(i)
+                        DropdownMenuItem({ Text(u.optString("name")) }, { adding = false; change("/api/oncall/add", JSONObject().put("user_id", u.getString("user_id"))) })
+                    }
+                }
+            }
+        }
     }
 }
 

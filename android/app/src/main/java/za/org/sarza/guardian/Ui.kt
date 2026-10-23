@@ -398,6 +398,13 @@ fun AppBar(go: ((Screen) -> Unit)?) = Column(Modifier.background(Navy).statusBar
             val scope = rememberCoroutineScope()
             val work = rememberWork()
             var open by remember { mutableStateOf(false) }
+            if (onCall) Row(
+                Modifier.height(30.dp).background(Yellow, RoundedCornerShape(15.dp)).clickable { go(Screen.OnCall) }.padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                GIcon("bell", Ink, 15.dp)
+                Text("On call", color = Ink, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false)
+            }
             Box {
                 Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable { open = true }, contentAlignment = Alignment.Center) {
                     GIcon("menu", Color.White, 24.dp)
@@ -406,6 +413,7 @@ fun AppBar(go: ((Screen) -> Unit)?) = Column(Modifier.background(Navy).statusBar
                     if (Store.role != "explorer") {
                         DropdownMenuItem({ Text("Travel") }, { open = false; go(Screen.Home) })
                         DropdownMenuItem({ Text("Active trips") }, { open = false; go(Screen.Board) })
+                        DropdownMenuItem({ Text("On call") }, { open = false; go(Screen.OnCall) })
                         HorizontalDivider()
                     }
                     DropdownMenuItem({ Text("Your profile") }, { open = false; go(Screen.Profile) })

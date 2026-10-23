@@ -26,6 +26,7 @@ sealed interface Screen {
     data class NewTrip(val activity: String) : Screen
     data object Trip : Screen
     data object Board : Screen
+    data object OnCall : Screen
     data class BoardTrip(val id: String) : Screen
     data class Chat(val id: String, val name: String) : Screen
 }
@@ -58,6 +59,7 @@ class MainActivity : ComponentActivity() {
                                 is Screen.NewTrip -> NewTripScreen(s.activity, go)
                                 Screen.Trip -> TripScreen(go)
                                 Screen.Board -> BoardScreen(go)
+                                Screen.OnCall -> OnCallScreen(go)
                                 is Screen.BoardTrip -> BoardTripScreen(s.id, go)
                                 is Screen.Chat -> ChatScreen(s.id, s.name, go)
                             }
@@ -85,12 +87,14 @@ class MainActivity : ComponentActivity() {
         val url = intent?.getStringExtra("url") ?: return
         Regex("^/board/messages/([^/?]+)").find(url)?.let { if (Store.role != "explorer" && Store.token != null) screen = Screen.Chat(it.groupValues[1], "") }
         Regex("^/board/trips/([^/?]+)").find(url)?.let { if (Store.role != "explorer" && Store.token != null) screen = Screen.BoardTrip(it.groupValues[1]) }
+        if (url == "/board/oncall" && Store.role != "explorer" && Store.token != null) screen = Screen.OnCall
     }
 
     private fun back(s: Screen): Screen? = when (s) {
         Screen.Profile -> Screen.Home
         is Screen.NewTrip -> Screen.Home
         is Screen.BoardTrip -> Screen.Board
+        Screen.OnCall -> Screen.Board
         is Screen.Chat -> Screen.Board
         else -> null
     }
