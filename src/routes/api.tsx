@@ -9,7 +9,8 @@ import { normalizePhone } from '../lib/phone'
 import { verifyGoogleToken } from '../lib/oauth'
 import { getPlaceLookup } from '../lib/places'
 import { saveMessageMedia, savePhoto } from '../lib/photos'
-import { FCM_PREFIX, getSender, helpPayload, pushToRoles, pushToUser } from '../lib/push'
+import { chatRecipients, noteOnCalls, raiseCall } from '../lib/calls'
+import { FCM_PREFIX, getSender, pushToRoles, pushToUser, pushToUsers } from '../lib/push'
 import { adminSetStatus, ADMIN_STATUSES, cancelHelp, extendTrip, getOpenTrip, getTrip, listCompanions, listOpenTrips, listPets, soundSiren, tripLine, tripPlace, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setPets, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
 import { newTripPage, profilePage } from './explorer'
 import { needsProfile, userFor } from './auth'
@@ -227,13 +228,16 @@ api.post('/trips/:id/extend', requireApiRole('explorer', 'operator', 'admin'), a
   }
   if (!return_by) return tripFail(c, 'Pick a time in the future', 400)
   if (!(await extendTrip(c.env.DB, trip.id, return_by, now))) return tripFail(c, "We couldn't add time. Your trip may have ended already.", 409)
+  await noteOnCalls(c.env.DB, trip.id, now, 'extended', c.var.user!.id, 'all')
   return done(c, { return_by }, '/trip')
 })
 
 api.post('/trips/:id/back', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
-  if (!(await markBack(c.env.DB, trip.id, Date.now()))) return tripFail(c, 'That trip has already ended.', 409)
+  const now = Date.now()
+  if (!(await markBack(c.env.DB, trip.id, now))) return tripFail(c, 'That trip has already ended.', 409)
+  await noteOnCalls(c.env.DB, trip.id, now, 'back', c.var.user!.id, 'all')
   return done(c, { ok: true }, `/trips/${trip.id}/done`)
 })
 
@@ -251,9 +255,12 @@ api.post('/trips/:id/help', requireApiRole('explorer', 'operator', 'admin'), asy
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
   if (trip.status === 'help') return done(c, { ok: true }, '/trip')
-  if (!(await requestHelp(c.env.DB, trip.id, Date.now()))) return tripFail(c, 'That trip has already ended. Phone SARZA if you need help.', 409)
-  const { sent } = await pushToRoles(c.env.DB, getSender(c.env), ['operator', 'admin'], helpPayload(user, trip))
-  if (sent > 0) await markHelpAlerted(c.env.DB, trip.id, Date.now())
+  const now = Date.now()
+  if (!(await requestHelp(c.env.DB, trip.id, now))) return tripFail(c, 'That trip has already ended. Phone SARZA if you need help.', 409)
+  // On the record of an overdue call already open, then a call of its own.
+  await noteOnCalls(c.env.DB, trip.id, now, 'help', user.id, null)
+  const { sent } = await raiseCall(c.env.DB, getSender(c.env), trip.id, 'help', now)
+  if (sent > 0) await markHelpAlerted(c.env.DB, trip.id, now)
   else console.error('help request reached no operators', trip.id)
   return done(c, { ok: true }, '/trip')
 })
@@ -262,6 +269,7 @@ api.post('/trips/:id/cancel', requireApiRole('explorer', 'operator', 'admin'), a
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
   if (!(await cancelHelp(c.env.DB, trip.id))) return tripFail(c, "You've already cancelled that call for help.", 409)
+  await noteOnCalls(c.env.DB, trip.id, Date.now(), 'help_cancelled', c.var.user!.id, 'help')
   return done(c, { ok: true }, '/trip')
 })
 
@@ -338,9 +346,11 @@ api.post('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'),
   const short = said.length > 120 ? said.slice(0, 119) + '…' : said
   const tag = `chat-${trip.id}`
   const send = getSender(c.env)
+  const toOps = { title: `Message from ${user.name}`, body: short, url: `/board/messages/${trip.id}`, tag, kind: 'message' as const }
   c.executionCtx.waitUntil(
     (user.role === 'explorer'
-      ? pushToRoles(c.env.DB, send, ['operator', 'admin'], { title: `Message from ${user.name}`, body: short, url: `/board/messages/${trip.id}`, tag, kind: 'message' })
+      // During a call, only the people it has reached hear it, or only the person who accepted.
+      ? chatRecipients(c.env.DB, trip.id).then((to) => (to ? pushToUsers(c.env.DB, send, to, toOps) : pushToRoles(c.env.DB, send, ['operator', 'admin'], toOps)))
       : pushToUser(c.env.DB, send, trip.user_id, { title: `SARZA: ${user.name}`, body: short, url: '/trip', tag, kind: 'message' })
     ).then((r) => { if (!r.sent) console.warn('message notification reached no one', trip.id, user.role === 'explorer' ? 'to operators' : 'to explorer') }),
   )
@@ -348,7 +358,10 @@ api.post('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'),
 })
 
 api.post('/board/trips/:id/close', requireApiRole('operator', 'admin'), async (c) => {
-  if (!(await operatorClose(c.env.DB, c.req.param('id'), Date.now()))) return c.json({ error: 'Trip is already closed' }, 409)
+  const id = c.req.param('id')
+  const now = Date.now()
+  if (!(await operatorClose(c.env.DB, id, now))) return c.json({ error: 'Trip is already closed' }, 409)
+  await noteOnCalls(c.env.DB, id, now, 'closed_trip', c.var.user!.id, 'all')
   return done(c, { ok: true }, '/board')
 })
 
@@ -364,6 +377,8 @@ api.post('/admin/trips/:id/status', requireApiRole('admin'), async (c) => {
     const error = 'This explorer already has another open trip. Close that one first.'
     return wantsJson(c) ? c.json({ error }, 409) : c.redirect(`${back}?error=${encodeURIComponent(error)}`, 303)
   }
+  // Setting a trip active or closed by hand ends its calls; overdue and help raise new ones through the cron.
+  await noteOnCalls(c.env.DB, id, Date.now(), 'admin_status', c.var.user!.id, status === 'active' || status === 'closed' ? 'all' : null, status)
   return done(c, { ok: true }, `${back}?saved=1`)
 })
 
@@ -458,6 +473,7 @@ api.get('/board/trips/:id', requireApiRole('operator', 'admin'), async (c) => {
 api.post('/board/trips/:id/siren', requireApiRole('operator', 'admin'), async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id'))
   if (!trip || !(await soundSiren(c.env.DB, trip.id, Date.now()))) return c.json({ error: 'Trip is closed' }, 409)
+  await noteOnCalls(c.env.DB, trip.id, Date.now(), 'siren', c.var.user!.id, null)
   const send = getSender(c.env)
   c.executionCtx.waitUntil(pushToUser(c.env.DB, send, trip.user_id, {
     title: 'SARZA is looking for you', body: 'Your phone is sounding so searchers can find you.', url: '/trip', tag: 'siren', kind: 'siren',
