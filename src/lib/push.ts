@@ -98,6 +98,17 @@ export async function pushToUser(db: D1Database, send: PushSender, userId: strin
   return pushToSubs(db, send, await listSubscriptionsForUser(db, userId), payload)
 }
 
+export async function pushToUsers(db: D1Database, send: PushSender, userIds: string[], payload: PushPayload) {
+  let sent = 0
+  let removed = 0
+  for (const id of userIds) {
+    const r = await pushToUser(db, send, id, payload)
+    sent += r.sent
+    removed += r.removed
+  }
+  return { sent, removed }
+}
+
 export async function pushToRoles(db: D1Database, send: PushSender, roles: Role[], payload: PushPayload) {
   return pushToSubs(db, send, await listSubscriptionsForRoles(db, roles), payload)
 }

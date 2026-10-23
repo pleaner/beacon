@@ -1,12 +1,9 @@
+import { formatTime } from './calls'
 import { getSetting, getUserById, prunePositions } from './db'
 import { helpPayload, pushToRoles, pushToUser, type PushSender } from './push'
 import { findHelpTripsToAlert, findTripsToAlertOperators, findTripsToPrompt, markHelpAlerted, markOperatorsAlerted, markOverdue, tripLine } from './trips'
 
 export const POSITION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
-
-export function formatTime(ms: number): string {
-  return new Date(ms).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg' })
-}
 
 export async function runCron(env: Env, send: PushSender, now: number) {
   const db = env.DB
