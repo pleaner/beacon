@@ -140,7 +140,11 @@ export async function findCallsToEscalate(db: DB, now: number): Promise<Call[]> 
 
 // The no-response time ran out: say who didn't answer, then pass it on.
 export async function escalate(db: DB, send: PushSender, call: Call, now: number): Promise<number> {
-  const last = (await listTargets(db, call.id)).filter((t) => t.rejected_at == null).at(-1)
+  const alerted = new Set(
+    (await db.prepare(`SELECT user_id FROM call_events WHERE call_id = ? AND kind = 'alerted'`).bind(call.id).all<{ user_id: string }>()).results.map((e) => e.user_id),
+  )
+  // Only someone who was actually alerted can have not answered; a no-device target was passed over.
+  const last = (await listTargets(db, call.id)).filter((t) => t.rejected_at == null && alerted.has(t.user_id)).at(-1)
   if (last) await addEvent(db, call.id, now, 'no_response', last.user_id)
   return advance(db, send, call, now)
 }

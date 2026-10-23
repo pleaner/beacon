@@ -115,6 +115,16 @@ describe('escalate', () => {
     expect(canReject(c, s.a)).toBe(true)
   })
 
+  it('never writes "No answer from" for someone who had no device', async () => {
+    const s = await setup({ a: false, b: false, c: false })
+    const f = fakeSender()
+    await raiseCall(env.DB, f.send, s.trip.id, 'overdue', T)
+    await escalate(env.DB, f.send, (await getCall(env.DB, (await callOf(s.trip.id)).id))!, T + 2 * MIN)
+    const texts = (await callOf(s.trip.id)).lines.map((l) => l.text)
+    expect(texts).toContain('Ayanda has no device that gets alerts.')
+    expect(texts.filter((t) => t.startsWith('No answer from'))).toEqual([])
+  })
+
   it('goes to everyone once the roster runs out, then stops', async () => {
     const s = await setup()
     const f = fakeSender()
