@@ -36,7 +36,6 @@ board.get('/board', async (c) => {
   )
 })
 
-// Every open trip's chat in one list, newest first. Each row opens that trip's chat on its own.
 board.get('/board/oncall', async (c) => {
   const s = await onCallState(c.env.DB, c.var.user!, Date.now())
   return c.html(
@@ -46,6 +45,7 @@ board.get('/board/oncall', async (c) => {
   )
 })
 
+// Every open trip's chat in one list, newest first. Each row opens that trip's chat on its own.
 board.get('/board/messages', async (c) => {
   const threads = await listMessageThreads(c.env.DB)
   return c.html(

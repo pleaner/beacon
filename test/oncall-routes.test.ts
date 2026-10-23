@@ -177,6 +177,11 @@ describe('web pages', () => {
     expect(after).not.toContain('>Accept<')
   })
 
+  it('the chip shows only for whoever is on call', async () => {
+    const o = await makeOperator()
+    expect(await (await call('/board', { cookie: cookieFor(o.token) })).text()).not.toContain('class="oncall-chip"')
+  })
+
   it('the menu links to On call', async () => {
     const o = await makeOperator()
     expect(await (await call('/board', { cookie: cookieFor(o.token) })).text()).toContain('href="/board/oncall"')
