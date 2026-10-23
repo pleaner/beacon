@@ -99,26 +99,27 @@ describe('help through the on-call roster', () => {
 })
 
 describe('chat during a call', () => {
-  it('falls back to every operator when an open call has no targets yet', async () => {
-    const s = await setup()
-    await env.DB.prepare('INSERT INTO calls (id, trip_id, kind, started_at, next_at) VALUES (?,?,?,?,?)').bind('c-empty', s.trip.id, 'help', Date.now(), Date.now()).run()
-    await call(`/api/trips/${s.trip.id}/messages`, post({ body: 'anyone there' }, s.ec))
-    expect(opEnds(s.f).sort()).toEqual(['https://push.test/a', 'https://push.test/b'])
-  })
-
-  it('goes to the people the call reached, then only to the person who accepted', async () => {
+  it('still pushes the explorer\'s message to every operator', async () => {
     const s = await setup()
     await call(`/api/trips/${s.trip.id}/help`, post({}, s.ec))
-    const first = opEnds(s.f)[0]!
-    const firstCookie = cookieFor(first.endsWith('/a') ? s.a.token : s.b.token)
+    expect(opEnds(s.f)).toHaveLength(1)
     s.f.sent.length = 0
     await call(`/api/trips/${s.trip.id}/messages`, post({ body: 'twisted ankle' }, s.ec))
-    expect(opEnds(s.f)).toEqual([first])
-    const [c] = await callsForTrip(env.DB, s.trip.id)
-    expect((await call(`/api/board/calls/${c!.id}/accept`, post({}, firstCookie))).status).toBe(200)
-    s.f.sent.length = 0
-    await call(`/api/trips/${s.trip.id}/messages`, post({ body: 'cold now' }, s.ec))
-    expect(opEnds(s.f)).toEqual([first])
+    expect(opEnds(s.f).sort()).toEqual(['https://push.test/a', 'https://push.test/b'])
+    expect(s.f.sent.every((x) => x.payload.url === `/board/messages/${s.trip.id}`)).toBe(true)
+  })
+})
+
+describe('cron and closed trips', () => {
+  it('sends no more alerts for a call whose trip closed with the call left open', async () => {
+    const s = await setup()
+    await call(`/api/trips/${s.trip.id}/help`, post({}, s.ec))
+    await env.DB.prepare("UPDATE trips SET status = 'closed' WHERE id = ?").bind(s.trip.id).run()
+    const before = s.f.sent.length
+    const r = await runCron(env, s.f.send, Date.now() + 5 * MIN)
+    expect(r.escalated).toBe(0)
+    expect(r.callsClosed).toBe(1)
+    expect(s.f.sent.slice(before).filter((x) => x.payload.kind === 'help' || x.payload.kind === 'overdue')).toHaveLength(0)
   })
 })
 

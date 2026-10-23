@@ -16,6 +16,10 @@ Native apps, in order. See `docs/native-plan.md`.
 - [ ] Android: make a release signing key, add its SHA-1 to an Android OAuth client in Google Cloud, and publish to Play internal testing.
 - [ ] Android: run a real hike on a Samsung phone to check it keeps tracking with the screen off.
 - [ ] On call: put SARZA's operators on the roster under Board, On call, and set the shift length and time to answer under Admin, Settings. Android pushes for on call arrive once `FCM_SERVICE_ACCOUNT` is set.
+- [ ] Add the admin Calls list on web and Android: every call, open and closed, newest first, each opening its record.
+- [ ] Give Android the admin role and an admin area with Users, Calls and On call.
+- [ ] Push on-call changes to all admins and to the people each change affects.
+- [ ] Move shift length and time to answer from Admin, Settings onto the On call page for admins.
 - [ ] Android: voice notes and photos in chat, and the brief and GPX for searchers, are web-only for now.
 - [ ] iOS app, explorer side then operator side, with the Live Activity.
 - [ ] Apple Watch: an emergency alert from the wrist, so an explorer can call for help without taking the phone out, and see "are you okay?" and help alerts on the watch.

@@ -122,19 +122,32 @@ export async function isOnCall(db: DB, userId: string, now: number): Promise<boo
   return (await currentShift(db, now)).onNow?.user_id === userId
 }
 
-// Tells whoever has just gone on shift, by the clock or by a handover. The cron runs it every minute, and the
-// roster routes run it straight after a change. Returns true when someone new went on.
+// Tells whoever has just gone on shift, by the clock or by a handover, and thanks whoever came off. The cron runs
+// it every minute, and the roster routes run it straight after a change. Returns true when someone new went on.
+const hhmm = (ms: number) => new Date(ms).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg' })
+
 export async function syncShift(db: DB, send: PushSender, now: number): Promise<boolean> {
-  const { onNow } = await currentShift(db, now)
+  const { onNow, until } = await currentShift(db, now)
   const id = onNow?.user_id ?? ''
   const prev = await getSetting(db, 'oncall_now', '')
   if (id === prev) return false
   // Conditional, so the cron and a roster change in the same moment don't both send it.
   const won = await db.prepare("UPDATE settings SET value = ? WHERE key = 'oncall_now' AND value = ?").bind(id, prev).run()
-  if (won.meta.changes === 0 || !onNow) return false
+  if (won.meta.changes === 0) return false
+  if (prev) {
+    await pushToUser(db, send, prev, {
+      title: 'Your shift has ended',
+      body: 'Thank you for your service. Alerts now go to whoever is on call.',
+      url: '/board/oncall',
+      tag: 'oncall',
+      kind: 'shift',
+    })
+  }
+  if (!onNow) return false
+  const ends = until == null ? 'It runs until someone else is available.' : `It ends at ${hhmm(until)}.`
   await pushToUser(db, send, onNow.user_id, {
     title: "You're on call",
-    body: 'Your shift has begun. Overdue and help alerts come to you first.',
+    body: `Your shift has begun. ${ends} Overdue and help alerts come to you first.`,
     url: '/board/oncall',
     tag: 'oncall',
     kind: 'shift',

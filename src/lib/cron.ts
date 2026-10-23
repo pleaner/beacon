@@ -51,6 +51,11 @@ export async function runCron(env: Env, send: PushSender, now: number) {
     }
   }
 
+  // Close the calls of ended trips first, so none of them escalates again.
+  const callsClosed = await closeCallsOfClosedTrips(db, now).catch((e) => {
+    console.error('closing calls failed', String(e))
+    return 0
+  })
   for (const call of await findCallsToEscalate(db, now)) {
     try {
       await escalate(db, send, call, now)
@@ -60,10 +65,6 @@ export async function runCron(env: Env, send: PushSender, now: number) {
     }
   }
 
-  const callsClosed = await closeCallsOfClosedTrips(db, now).catch((e) => {
-    console.error('closing calls failed', String(e))
-    return 0
-  })
   const shiftChanged = await syncShift(db, send, now).catch((e) => {
     console.error('shift sync failed', String(e))
     return false

@@ -190,6 +190,8 @@ export async function noteOnCalls(
   db: DB, tripId: string, now: number, kind: CallEvent, userId: string | null, close: 'all' | CallKind | null, detail: string | null = null,
 ) {
   for (const call of await listOpenCalls(db, tripId)) {
+    // A help call's own start already says the explorer called for help.
+    if (kind === 'help' && call.kind === 'help') continue
     await addEvent(db, call.id, now, kind, userId, detail)
     if (close === 'all' || close === call.kind) await closeCall(db, call.id, now)
   }
@@ -202,28 +204,6 @@ export async function closeCallsOfClosedTrips(db: DB, now: number): Promise<numb
   ).results
   for (const r of rows) await closeCall(db, r.id, now)
   return rows.length
-}
-
-// Who hears the explorer's chat messages. Null when no call is open: every operator and admin, as before.
-export async function chatRecipients(db: DB, tripId: string): Promise<string[] | null> {
-  const calls = await listOpenCalls(db, tripId)
-  if (calls.length === 0) return null
-  const ids = new Set<string>()
-  for (const c of calls) {
-    if (c.accepted_by) {
-      ids.add(c.accepted_by)
-      continue
-    }
-    const targets = await listTargets(db, c.id)
-    const rejected = new Set(targets.filter((t) => t.rejected_at != null).map((t) => t.user_id))
-    if (c.everyone_at != null) {
-      const all = (await db.prepare("SELECT id FROM users WHERE role IN ('operator','admin')").all<{ id: string }>()).results
-      for (const u of all) if (!rejected.has(u.id)) ids.add(u.id)
-    } else {
-      for (const t of targets) if (t.rejected_at == null) ids.add(t.user_id)
-    }
-  }
-  return [...ids]
 }
 
 type EventRow = { call_id: string; at: number; kind: CallEvent; detail: string | null; name: string | null }

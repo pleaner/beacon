@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
 import { addMessage, addSubscription } from '../src/lib/db'
 import {
-  acceptCall, callsForTrip, canAccept, canReject, chatRecipients, closeCallsOfClosedTrips, escalate, findCallsToEscalate, getCall, noteOnCalls, raiseCall, rejectCall,
+  acceptCall, callsForTrip, canAccept, canReject, closeCallsOfClosedTrips, escalate, findCallsToEscalate, getCall, noteOnCalls, raiseCall, rejectCall,
 } from '../src/lib/calls'
 import { addToRoster, slotStart } from '../src/lib/oncall'
 import { markBack, startTrip, type NewTrip } from '../src/lib/trips'
@@ -231,18 +231,5 @@ describe('the record and closing', () => {
     await markBack(env.DB, s.trip.id, T + 1000)
     expect(await closeCallsOfClosedTrips(env.DB, T + 2000)).toBe(1)
     expect((await getCall(env.DB, (await callOf(s.trip.id)).id))?.closed_at).toBe(T + 2000)
-  })
-})
-
-describe('chatRecipients', () => {
-  it('is everyone with no call, the people reached before an accept, and the accepter after', async () => {
-    const s = await setup()
-    expect(await chatRecipients(env.DB, s.trip.id)).toBeNull()
-    const f = fakeSender()
-    await raiseCall(env.DB, f.send, s.trip.id, 'help', T)
-    await escalate(env.DB, f.send, (await findCallsToEscalate(env.DB, T + 2 * MIN))[0]!, T + 2 * MIN)
-    expect((await chatRecipients(env.DB, s.trip.id))?.sort()).toEqual([s.a, s.b].sort())
-    await acceptCall(env.DB, (await callOf(s.trip.id)).id, s.b, T + 3 * MIN)
-    expect(await chatRecipients(env.DB, s.trip.id)).toEqual([s.b])
   })
 })
