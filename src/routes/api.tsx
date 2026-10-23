@@ -9,7 +9,8 @@ import { normalizePhone } from '../lib/phone'
 import { verifyGoogleToken } from '../lib/oauth'
 import { getPlaceLookup } from '../lib/places'
 import { saveMessageMedia, savePhoto } from '../lib/photos'
-import { chatRecipients, noteOnCalls, raiseCall } from '../lib/calls'
+import { acceptCall, callsForTrip, callsJson, chatRecipients, getCall, noteOnCalls, raiseCall, rejectCall } from '../lib/calls'
+import { addToRoster, isOnCall, moveInRoster, onCallState, removeFromRoster, setAvailable, syncShift } from '../lib/oncall'
 import { FCM_PREFIX, getSender, pushToRoles, pushToUser, pushToUsers } from '../lib/push'
 import { adminSetStatus, ADMIN_STATUSES, cancelHelp, extendTrip, getOpenTrip, getTrip, listCompanions, listOpenTrips, listPets, soundSiren, tripLine, tripPlace, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setPets, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
 import { newTripPage, profilePage } from './explorer'
@@ -451,7 +452,10 @@ api.post('/push/device', requireApiRole('explorer', 'operator', 'admin'), async 
 api.get('/board', requireApiRole('operator', 'admin'), async (c) => {
   const trips = await listOpenTrips(c.env.DB)
   const last = await lastPositionsByTrip(c.env.DB, trips.map((t) => t.id))
-  return c.json({ trips: trips.map((t) => ({ ...t, place: tripPlace(t), line: tripLine(t), last: last.get(t.id) ?? null })) })
+  return c.json({
+    trips: trips.map((t) => ({ ...t, place: tripPlace(t), line: tripLine(t), last: last.get(t.id) ?? null })),
+    on_call: await isOnCall(c.env.DB, c.var.user!.id, Date.now()),
+  })
 })
 
 api.get('/board/messages', requireApiRole('operator', 'admin'), async (c) => {
@@ -463,10 +467,14 @@ api.get('/board/trips/:id', requireApiRole('operator', 'admin'), async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id'))
   const user = trip && (await getUserById(c.env.DB, trip.user_id))
   if (!trip || !user) return c.json({ error: 'Not found' }, 404)
-  const [positions, companions, messages] = await Promise.all([
+  const [positions, companions, messages, calls, onCall] = await Promise.all([
     listPositions(c.env.DB, trip.id, 50), listCompanions(c.env.DB, trip.id), listMessages(c.env.DB, trip.id),
+    callsForTrip(c.env.DB, trip.id), isOnCall(c.env.DB, c.var.user!.id, Date.now()),
   ])
-  return c.json({ trip: { ...trip, place: tripPlace(trip), line: tripLine(trip) }, user: publicUser(user), positions, companions, messages })
+  return c.json({
+    trip: { ...trip, place: tripPlace(trip), line: tripLine(trip) }, user: publicUser(user), positions, companions, messages,
+    calls: callsJson(calls, c.var.user!.id), on_call: onCall,
+  })
 })
 
 // Sound the explorer's siren: pushed now, and repeated in the reply to the phone's next position upload.
@@ -481,3 +489,68 @@ api.post('/board/trips/:id/siren', requireApiRole('operator', 'admin'), async (c
   }))
   return done(c, { ok: true }, `/board/trips/${trip.id}`)
 })
+
+// ---------- on call ----------
+
+async function afterRosterChange(c: Context<AppEnv>) {
+  const now = Date.now()
+  await syncShift(c.env.DB, getSender(c.env), now)
+  return done(c, await onCallState(c.env.DB, c.var.user!, now), '/board/oncall')
+}
+
+api.get('/oncall', requireApiRole('operator', 'admin'), async (c) => c.json(await onCallState(c.env.DB, c.var.user!, Date.now())))
+
+// Anyone on the list sets their own availability. Admins can set anyone's, for someone who forgot.
+api.post('/oncall/availability', requireApiRole('operator', 'admin'), async (c) => {
+  const me = c.var.user!
+  const b = await readBody(c)
+  const who = str(b, 'user_id') ?? me.id
+  if (who !== me.id && me.role !== 'admin') return c.json({ error: "Only admins can change someone else's availability" }, 403)
+  if (!(await setAvailable(c.env.DB, who, str(b, 'available') === '1'))) return c.json({ error: 'Not on the on-call list' }, 404)
+  return afterRosterChange(c)
+})
+
+api.post('/oncall/add', requireApiRole('admin'), async (c) => {
+  const id = str(await readBody(c), 'user_id')
+  const u = id ? await getUserById(c.env.DB, id) : null
+  if (!u || (u.role !== 'operator' && u.role !== 'admin')) return c.json({ error: 'Pick an operator or admin' }, 400)
+  await addToRoster(c.env.DB, u.id)
+  return afterRosterChange(c)
+})
+
+api.post('/oncall/remove', requireApiRole('admin'), async (c) => {
+  const id = str(await readBody(c), 'user_id')
+  if (id) await removeFromRoster(c.env.DB, id)
+  return afterRosterChange(c)
+})
+
+api.post('/oncall/move', requireApiRole('admin'), async (c) => {
+  const b = await readBody(c)
+  const id = str(b, 'user_id')
+  if (id) await moveInRoster(c.env.DB, id, str(b, 'dir') === 'up' ? -1 : 1)
+  return afterRosterChange(c)
+})
+
+const CALL_ERRORS: Record<string, string> = {
+  taken: 'Someone else accepted this call first.',
+  rejected: 'You rejected this call.',
+  not_yours: "This call hasn't reached you, so there's nothing to reject.",
+  closed: 'This call has ended.',
+}
+
+async function callAnswer(c: Context<AppEnv>, answer: 'accept' | 'reject') {
+  const call = await getCall(c.env.DB, c.req.param('id')!)
+  if (!call) return c.json({ error: 'Not found' }, 404)
+  const now = Date.now()
+  const user = c.var.user!
+  const r = answer === 'accept'
+    ? await acceptCall(c.env.DB, call.id, user.id, now)
+    : await rejectCall(c.env.DB, getSender(c.env), call.id, user.id, now)
+  const page = `/board/trips/${call.trip_id}`
+  const error = r === 'accepted' || (answer === 'reject' && r === 'rejected') ? null : CALL_ERRORS[r]!
+  if (error) return wantsJson(c) ? c.json({ error }, 409) : c.redirect(`${page}?error=${encodeURIComponent(error)}`, 303)
+  return done(c, { ok: true }, page)
+}
+
+api.post('/board/calls/:id/accept', requireApiRole('operator', 'admin'), (c) => callAnswer(c, 'accept'))
+api.post('/board/calls/:id/reject', requireApiRole('operator', 'admin'), (c) => callAnswer(c, 'reject'))

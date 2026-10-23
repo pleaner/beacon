@@ -106,8 +106,7 @@ describe('chat during a call', () => {
     expect(opEnds(s.f).sort()).toEqual(['https://push.test/a', 'https://push.test/b'])
   })
 
-  // The accept endpoint arrives in Task 4; drop the skip there.
-  it.skip('goes to the people the call reached, then only to the person who accepted', async () => {
+  it('goes to the people the call reached, then only to the person who accepted', async () => {
     const s = await setup()
     await call(`/api/trips/${s.trip.id}/help`, post({}, s.ec))
     const first = opEnds(s.f)[0]!

@@ -4,6 +4,7 @@ import { ACTIVITIES, type Activity } from '../lib/constants'
 import { createUser, deleteUser, getChecklist, getSetting, getUserByEmail, getUserById, listUsers, setChecklist, setSetting, updateUser, type Role } from '../lib/db'
 import { readBody, requireRole, str } from '../lib/middleware'
 import { normalizePhone } from '../lib/phone'
+import { SHIFT_HOURS, syncShift } from '../lib/oncall'
 import { getSender, pushToRoles } from '../lib/push'
 import { ADMIN_TABS, AdminPage, AdminUserPage, type AdminTab } from '../views/admin'
 import { listOpenTrips } from '../lib/trips'
@@ -19,12 +20,13 @@ async function render(c: Context<AppEnv>, over: { tab?: string; error?: string; 
   const tab: AdminTab = rawTab in ADMIN_TABS ? (rawTab as AdminTab) : 'users'
   const activityQ = c.req.query('activity') ?? 'hike'
   const activity = (activityQ in ACTIVITIES ? activityQ : 'hike') as Activity
-  const [users, items, grace, sms, open] = await Promise.all([
+  const [users, items, grace, sms, open, shiftHours, noResponse] = await Promise.all([
     listUsers(c.env.DB), getChecklist(c.env.DB, activity), getSetting(c.env.DB, 'grace_minutes', '30'), getSetting(c.env.DB, 'sms_number', ''), listOpenTrips(c.env.DB),
+    getSetting(c.env.DB, 'shift_hours', '8'), getSetting(c.env.DB, 'no_response_minutes', '2'),
   ])
   return c.html(
     <Layout title={ADMIN_TABS[tab]} user={me} current={tab} helpCount={open.filter((t) => t.status === 'help').length}>
-      <AdminPage tab={tab} users={users} me={me} activity={activity} items={items} grace={grace} sms={sms} q={c.req.query('q') ?? ''}
+      <AdminPage tab={tab} users={users} me={me} activity={activity} items={items} grace={grace} sms={sms} shiftHours={shiftHours} noResponse={noResponse} q={c.req.query('q') ?? ''}
         sent={c.req.query('sent') ?? null} saved={c.req.query('saved') === '1'} error={over.error} />
     </Layout>,
     over.status ?? 200,
@@ -109,7 +111,22 @@ admin.post('/admin/settings', async (c) => {
     sms = normalizePhone(str(b, 'sms_number')) ?? ''
     if (sms && !/^\+\d{8,15}$/.test(sms)) return render(c, { tab: 'settings', error: 'Text number must be a phone number, like 082 123 4567 or +27 82 123 4567', status: 400 })
   }
+  // Only pages that show the on-call fields send them, so an older form never resets them.
+  let hours: number | null = null
+  let minutes: number | null = null
+  if ('shift_hours' in b || 'no_response_minutes' in b) {
+    hours = Number(str(b, 'shift_hours'))
+    minutes = Number(str(b, 'no_response_minutes'))
+    if (!(SHIFT_HOURS as readonly number[]).includes(hours)) return render(c, { tab: 'settings', error: 'Shift length must divide a day: 1, 2, 3, 4, 6, 8, 12 or 24 hours', status: 400 })
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60) return render(c, { tab: 'settings', error: 'Time to answer must be 1 to 60 minutes', status: 400 })
+  }
   await setSetting(c.env.DB, 'grace_minutes', String(n))
   if (sms !== null) await setSetting(c.env.DB, 'sms_number', sms)
+  if (hours !== null && minutes !== null) {
+    await setSetting(c.env.DB, 'shift_hours', String(hours))
+    await setSetting(c.env.DB, 'no_response_minutes', String(minutes))
+    // A new shift length can put someone else on now.
+    await syncShift(c.env.DB, getSender(c.env), Date.now())
+  }
   return c.redirect('/admin?tab=settings&saved=1', 303)
 })
