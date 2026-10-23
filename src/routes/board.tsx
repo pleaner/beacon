@@ -1,10 +1,13 @@
 import { Hono } from 'hono'
 import type { AppEnv } from '../env'
 import { getUserById, lastPositionsByTrip, listMessages, listMessageThreads, listPositions } from '../lib/db'
+import { callsForTrip } from '../lib/calls'
 import { requireRole } from '../lib/middleware'
+import { isOnCall, onCallState } from '../lib/oncall'
 import { getTrip, listCompanions, listOpenTrips, tripLine, tripPlace } from '../lib/trips'
-import { Board, Brief, Messages, STATUSES, TripDetail } from '../views/board'
+import { Board, Brief, Chat, Messages, STATUSES, TripDetail } from '../views/board'
 import { Layout } from '../views/layout'
+import { OnCallPage } from '../views/oncall'
 
 export const board = new Hono<AppEnv>()
 board.use('/board/*', requireRole('operator', 'admin'))
@@ -27,13 +30,22 @@ board.get('/board', async (c) => {
   const rows = trips.map((t) => ({ ...t, last: last.get(t.id) ?? null }))
   const attrs = { 'data-refresh': '30', 'data-vapid': c.env.VAPID_PUBLIC_KEY }
   return c.html(
-    <Layout title="Board" user={c.var.user} bodyAttrs={attrs} current="board" helpCount={counts.help}>
+    <Layout title="Board" user={c.var.user} bodyAttrs={attrs} current="board" helpCount={counts.help} onCall={await isOnCall(c.env.DB, c.var.user!.id, Date.now())}>
       <Board rows={rows} counts={counts} status={status} q={q} now={Date.now()} />
     </Layout>,
   )
 })
 
-// Every open trip's chat in one list, newest first. Each row opens the trip, scrolled to its messages.
+board.get('/board/oncall', async (c) => {
+  const s = await onCallState(c.env.DB, c.var.user!, Date.now())
+  return c.html(
+    <Layout title="On call" user={c.var.user} current="oncall" onCall={s.me.on_call}>
+      <OnCallPage s={s} admin={c.var.user!.role === 'admin'} error={c.req.query('error')} />
+    </Layout>,
+  )
+})
+
+// Every open trip's chat in one list, newest first. Each row opens that trip's chat on its own.
 board.get('/board/messages', async (c) => {
   const threads = await listMessageThreads(c.env.DB)
   return c.html(
@@ -43,16 +55,37 @@ board.get('/board/messages', async (c) => {
   )
 })
 
+board.get('/board/messages/:id', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id'))
+  if (!trip) return c.text('Not found', 404)
+  const [user, messages] = await Promise.all([getUserById(c.env.DB, trip.user_id), listMessages(c.env.DB, trip.id)])
+  if (!user) return c.text('Not found', 404)
+  const first = user.name.split(' ')[0]
+  return c.html(
+    <Layout title="Messages" user={c.var.user} current="messages">
+      <main>
+        <p><a href="/board/messages">‹ Messages</a></p>
+        <div class="row" style="justify-content: space-between; align-items: baseline;">
+          <h1 class="display">{user.name}</h1>
+          <a href={`/board/trips/${trip.id}`}>Trip</a>
+        </div>
+        <Chat tripId={trip.id} messages={messages} placeholder={`Message ${first}`} me="operator" />
+      </main>
+    </Layout>,
+  )
+})
+
 board.get('/board/trips/:id', async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id'))
   if (!trip) return c.text('Not found', 404)
-  const [user, positions, companions, messages] = await Promise.all([
+  const [user, positions, companions, messages, calls, onCall] = await Promise.all([
     getUserById(c.env.DB, trip.user_id), listPositions(c.env.DB, trip.id, 50), listCompanions(c.env.DB, trip.id), listMessages(c.env.DB, trip.id),
+    callsForTrip(c.env.DB, trip.id), isOnCall(c.env.DB, c.var.user!.id, Date.now()),
   ])
   if (!user) return c.text('Not found', 404)
   return c.html(
-    <Layout title="Trip" user={c.var.user} current="board">
-      <TripDetail trip={trip} user={user} positions={positions} companions={companions} messages={messages} now={Date.now()}
+    <Layout title="Trip" user={c.var.user} current="board" onCall={onCall}>
+      <TripDetail trip={trip} user={user} positions={positions} companions={companions} messages={messages} calls={calls} viewerId={c.var.user!.id} now={Date.now()}
         admin={c.var.user?.role === 'admin'} saved={c.req.query('saved') === '1'} error={c.req.query('error')} />
     </Layout>,
   )

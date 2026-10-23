@@ -48,6 +48,9 @@ There is no sign-up for admins. Insert a row by hand:
 | Help pushes operator | | |
 | Operator maps link correct | | |
 | Broadcast arrives | | |
+| Shift-start push reaches the person going on call | | |
+| Help call reaches only the person on call, then the next after the time to answer | | |
+| Accept on one phone, the other phone's card says "Accepted by" | | |
 | Grace period timing | | |
 
 Not yet run. Needs a physical iPhone and Android device; see the plan, Task 14, Step 5, for the script.

@@ -9,8 +9,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.getValue
@@ -28,8 +26,9 @@ sealed interface Screen {
     data class NewTrip(val activity: String) : Screen
     data object Trip : Screen
     data object Board : Screen
+    data object OnCall : Screen
     data class BoardTrip(val id: String) : Screen
-    data object Messages : Screen
+    data class Chat(val id: String, val name: String) : Screen
 }
 
 class MainActivity : ComponentActivity() {
@@ -46,13 +45,10 @@ class MainActivity : ComponentActivity() {
                 val s = screen
                 BackHandler(enabled = back(s) != null) { screen = back(s)!! }
                 val go = { next: Screen -> screen = next }
-                // Operators and admins switch between the explorer app, the board and messages on tabs along the bottom.
-                val tabs = Store.role != "explorer" && (s == Screen.Home || s is Screen.HomeNotice || s == Screen.Board || s == Screen.Messages)
                 Box(Modifier.fillMaxSize()) {
                     Column {
                         AppBar(if (s == Screen.Welcome) null else go)
-                        // The tabs sit on the navigation bar, so the screen above them doesn't pad for it again.
-                        Box(Modifier.weight(1f).then(if (tabs) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier)) {
+                        Box(Modifier.weight(1f)) {
                             when (s) {
                                 Screen.Welcome -> WelcomeScreen(go)
                                 Screen.Profile -> ProfileScreen(go)
@@ -63,11 +59,11 @@ class MainActivity : ComponentActivity() {
                                 is Screen.NewTrip -> NewTripScreen(s.activity, go)
                                 Screen.Trip -> TripScreen(go)
                                 Screen.Board -> BoardScreen(go)
+                                Screen.OnCall -> OnCallScreen(go)
                                 is Screen.BoardTrip -> BoardTripScreen(s.id, go)
-                                Screen.Messages -> MessagesScreen(go)
+                                is Screen.Chat -> ChatScreen(s.id, s.name, go)
                             }
                         }
-                        if (tabs) OpsTabs(s, go)
                     }
                     AlphaRibbon()
                 }
@@ -89,14 +85,17 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         val url = intent?.getStringExtra("url") ?: return
+        Regex("^/board/messages/([^/?]+)").find(url)?.let { if (Store.role != "explorer" && Store.token != null) screen = Screen.Chat(it.groupValues[1], "") }
         Regex("^/board/trips/([^/?]+)").find(url)?.let { if (Store.role != "explorer" && Store.token != null) screen = Screen.BoardTrip(it.groupValues[1]) }
+        if (url == "/board/oncall" && Store.role != "explorer" && Store.token != null) screen = Screen.OnCall
     }
 
     private fun back(s: Screen): Screen? = when (s) {
         Screen.Profile -> Screen.Home
         is Screen.NewTrip -> Screen.Home
         is Screen.BoardTrip -> Screen.Board
-        Screen.Messages -> Screen.Board
+        Screen.OnCall -> Screen.Board
+        is Screen.Chat -> Screen.Board
         else -> null
     }
 

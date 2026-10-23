@@ -54,7 +54,7 @@ describe('trip chat', () => {
     await call(url, post({ body: 'x'.repeat(500) }, ec))
     expect(f.sent).toHaveLength(1)
     expect(f.sent[0]!.endpoint).toBe('https://push.test/o')
-    expect(f.sent[0]!.payload).toMatchObject({ title: 'Message from Anele', url: `/board/trips/${trip.id}` })
+    expect(f.sent[0]!.payload).toMatchObject({ title: 'Message from Anele', url: `/board/messages/${trip.id}` })
     expect(f.sent[0]!.payload.body.length).toBe(120)
     await call(url, post({ body: 'On our way' }, oc))
     expect(f.sent[1]).toMatchObject({ endpoint: 'https://push.test/e', payload: { title: 'SARZA: Sipho', body: 'On our way', url: '/trip' } })

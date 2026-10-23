@@ -25,6 +25,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,6 +64,9 @@ private val ZM = Color(0xFF71717A)
 private val ZB = Color(0xFFE4E4E7)
 private val ZA = Color(0xFFF4F4F5)
 
+// Set from every board, trip and on-call reply, so the top bar shows the chip while you're on shift.
+var onCall by mutableStateOf(false)
+
 private val TABS = listOf("" to "All", "help" to "Help", "overdue" to "Overdue", "active" to "Active")
 
 fun initials(name: String) = name.split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1).uppercase() }
@@ -84,8 +89,8 @@ fun BoardScreen(go: (Screen) -> Unit) {
     LaunchedEffect(Unit) {
         Guardian.registerForPush(context)
         while (true) {
-            val r = withContext(Dispatchers.IO) { runCatching { Api.get("/api/board").getJSONArray("trips") } }
-            r.onSuccess { trips = it }
+            val r = withContext(Dispatchers.IO) { runCatching { Api.get("/api/board") } }
+            r.onSuccess { trips = it.getJSONArray("trips"); onCall = it.optBoolean("on_call") }
             offline = r.isFailure
             if ((r.exceptionOrNull() as? Api.Failed)?.status == 401) { Store.signOut(); go(Screen.Welcome); return@LaunchedEffect }
             delay(30_000)
@@ -166,74 +171,36 @@ private fun TripRow(t: JSONObject, onClick: () -> Unit) {
     }
 }
 
+// One trip's chat on its own, reached from the toggle on the trip page.
 @Composable
-fun MessagesScreen(go: (Screen) -> Unit) {
-    var threads by remember { mutableStateOf<JSONArray?>(null) }
-    var offline by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            val r = withContext(Dispatchers.IO) { runCatching { Api.get("/api/board/messages").getJSONArray("threads") } }
-            r.onSuccess { threads = it }
-            offline = r.isFailure
-            if ((r.exceptionOrNull() as? Api.Failed)?.status == 401) { Store.signOut(); go(Screen.Welcome); return@LaunchedEffect }
-            delay(30_000)
-        }
-    }
-    OpsPage {
-        Row(verticalAlignment = Alignment.Bottom) {
-            DisplayText("Messages", modifier = Modifier.weight(1f))
-            Text("Refreshes every 30 s", color = Muted, fontSize = 13.sp)
-        }
-        if (offline) Banner(RedT, RedInk) { Text("No connection. Showing what we had.", fontWeight = FontWeight.SemiBold) }
-        val all = threads?.let { a -> List(a.length()) { a.getJSONObject(it) } }
-        if (all == null) Text("Loading…", color = Muted)
-        else if (all.isEmpty()) Text("No messages on open trips.", color = Muted)
-        for (t in all.orEmpty()) ThreadRow(t) { go(Screen.BoardTrip(t.getString("trip_id"))) }
-    }
+fun ChatScreen(id: String, name: String, go: (Screen) -> Unit) = Column(Modifier.fillMaxSize().imePadding()) {
+    Column(Modifier.background(ZA).padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)) { TripHeader(id, name, chat = true, go) }
+    Chat(id, "Message", mine = "operator", modifier = Modifier.weight(1f).navigationBarsPadding(), card = false)
 }
 
+// The top of the trip page and its chat, identical on both: back, the traveller's name, then Trip and Chat side by side.
 @Composable
-private fun ThreadRow(t: JSONObject, onClick: () -> Unit) {
-    val help = t.optString("status") == "help"
-    val shape = RoundedCornerShape(12.dp)
-    val body = t.optString("last_body").takeUnless { t.isNull("last_body") || it.isEmpty() }
-        ?: t.optString("last_media_type").let { if (it.startsWith("image/")) "Photo" else if (it.startsWith("audio/")) "Voice note" else "" }
-    val who = if (t.optString("last_author_role") == "operator") "SARZA" else t.optString("user_name").substringBefore(' ')
-    Column(
-        Modifier.fillMaxWidth().clip(shape).background(if (help) RedT else Color.White).border(1.dp, if (help) Red else ZB, shape).clickable(onClick = onClick).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(t.optString("status"))
-            Text(t.optString("user_name"), Modifier.weight(1f), color = Z9, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-            Text(ago(t.optLong("last_at")), color = ZM, fontSize = 13.sp)
-        }
-        Text(t.optString("line"), color = ZM, fontSize = 14.sp)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GIcon("chat", ZM, 16.dp)
-            Text("$who: $body", Modifier.weight(1f), color = Z9, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text("${t.optInt("count")}", color = ZM, fontSize = 13.sp)
-        }
+private fun TripHeader(id: String, name: String, chat: Boolean, go: (Screen) -> Unit) = Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Row(Modifier.clickable { go(Screen.Board) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        GIcon("back", Z9, 16.dp)
+        Text("Board", color = Z9, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     }
+    DisplayText(name.ifEmpty { " " }, size = 36.sp)
+    TripChatToggle(id, name, chat, go)
 }
 
-// The operator's tabs along the bottom: the explorer app, the board, and chat threads.
+// Trip and Chat side by side, styled like the board's filter.
 @Composable
-fun OpsTabs(current: Screen, go: (Screen) -> Unit) = Column(Modifier.background(Color.White).navigationBarsPadding()) {
-    Box(Modifier.fillMaxWidth().height(1.dp).background(ZB))
-    Row(Modifier.fillMaxWidth().height(60.dp)) {
-        for ((screen, icon, label) in listOf(Triple(Screen.Home, "hike", "Travel"), Triple(Screen.Board, "board", "Active trips"), Triple(Screen.Messages, "chat", "Messages"))) {
-            val on = current == screen || (screen == Screen.Home && current is Screen.HomeNotice)
-            Column(
-                Modifier.weight(1f).fillMaxSize().clickable { if (!on) go(screen) },
-                verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                GIcon(icon, if (on) Navy else ZM, 22.dp)
-                Text(label, color = if (on) Navy else ZM, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.SemiBold)
-            }
+private fun TripChatToggle(id: String, name: String, chat: Boolean, go: (Screen) -> Unit) =
+    Row(Modifier.fillMaxWidth().background(ZB.copy(alpha = .6f), RoundedCornerShape(12.dp)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        for ((isChat, label) in listOf(false to "Trip", true to "Chat")) {
+            Box(
+                Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(9.dp)).background(if (chat == isChat) Color.White else Color.Transparent)
+                    .clickable(enabled = chat != isChat) { go(if (isChat) Screen.Chat(id, name) else Screen.BoardTrip(id)) },
+                contentAlignment = Alignment.Center,
+            ) { Text(label, color = if (chat == isChat) Z9 else ZM, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
         }
     }
-}
 
 // A white card with a heading, as the web's .card.
 @Composable
@@ -266,15 +233,12 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
     val scope = rememberCoroutineScope()
     LaunchedEffect(id, reload) {
         while (true) {
-            withContext(Dispatchers.IO) { runCatching { Api.get("/api/board/trips/$id") } }.onSuccess { detail = it }
+            withContext(Dispatchers.IO) { runCatching { Api.get("/api/board/trips/$id") } }.onSuccess { detail = it; onCall = it.optBoolean("on_call") }
             delay(15_000)
         }
     }
     OpsPage {
-        Row(Modifier.clickable { go(Screen.Board) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            GIcon("back", Z9, 16.dp)
-            Text("Board", color = Z9, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        }
+        TripHeader(id, detail?.optJSONObject("user")?.optString("name").orEmpty(), chat = false, go)
         val d = detail ?: run { Text("Loading…", color = Muted); return@OpsPage }
         val t = d.getJSONObject("trip")
         val u = d.getJSONObject("user")
@@ -285,19 +249,47 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
         val backText = "${android.text.format.DateFormat.format("EEE", back)} ${hhmm(back)}"
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row { Pill(status) }
-            DisplayText(u.optString("name"), size = 36.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GIcon(ACTIVITY_ICON[t.optString("activity")] ?: "other", Z9, 18.dp, modifier = Modifier.padding(top = 2.dp))
                 Text("${t.optString("line")} · back by $backText", color = Z9)
             }
         }
         GButton("Phone $first ${formatPhone(u.optString("phone"))}", Btn.Red, "phone") { context.call(u.optString("phone")) }
+        ErrorBanner(work.error)
+        val calls = d.optJSONArray("calls") ?: JSONArray()
+        for (i in 0 until calls.length()) {
+            val call = calls.getJSONObject(i)
+            val cid = call.getString("id")
+            Card(if (call.optString("kind") == "help") "Help call" else "Overdue call") {
+                Text(
+                    when {
+                        !call.isNull("accepted_at") -> "Accepted by ${call.optString("accepted_name").ifEmpty { "someone" }}, ${hhmm(call.getLong("accepted_at"))}"
+                        !call.isNull("closed_at") -> "Closed ${hhmm(call.getLong("closed_at"))}. Nobody accepted."
+                        else -> "Open. Nobody has accepted yet."
+                    },
+                    color = Z9,
+                )
+                if (call.optBoolean("can_accept") || call.optBoolean("can_reject")) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (call.optBoolean("can_accept")) GButton("Accept", small = true, enabled = !work.busy, modifier = Modifier.weight(1f)) {
+                        work.run(scope, { Api.post("/api/board/calls/$cid/accept") }) { reload++ }
+                    }
+                    if (call.optBoolean("can_reject")) GButton("Reject", Btn.Outline, small = true, enabled = !work.busy, modifier = Modifier.weight(1f)) {
+                        confirm = "reject:$cid"
+                    }
+                }
+                val lines = call.getJSONArray("lines")
+                for (j in 0 until lines.length()) {
+                    val l = lines.getJSONObject(j)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(hhmm(l.getLong("at")), color = ZM, fontFamily = Mono, fontSize = 13.sp)
+                        Text(l.optString("text"), color = Z9, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
 
         val positions = d.getJSONArray("positions")
         val p = if (positions.length() > 0) positions.getJSONObject(0) else null
-        if (p != null) Banner(YellowT, Ink, border = YellowLine) {
-            Text("Last position ${ago(p.optLong("at"))}. Positions arrive every two minutes while a trip is on. Silence means the phone is off, flat, or out of signal.")
-        }
         Card("Last position") {
             if (p == null) {
                 Text("None yet.", color = ZM)
@@ -317,7 +309,6 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
                 }
             }
         }
-        Chat(id, "Message $first", mine = "operator", modifier = Modifier.heightIn(max = 420.dp), card = true)
 
         val checklist = runCatching { JSONArray(t.optString("checklist_json")) }.getOrNull()?.let { a -> List(a.length()) { a.getString(it) } }.orEmpty()
         Card("Plan") {
@@ -402,7 +393,6 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
                 }
             }
         }
-        ErrorBanner(work.error)
         if (status != "closed") {
             Card("Siren") {
                 Text("Makes $first's phone sound loudly, even on silent, so searchers nearby can hear it." +
@@ -416,6 +406,21 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
         }
     }
     confirm?.let { what ->
+        if (what.startsWith("reject:")) {
+            AlertDialog(
+                onDismissRequest = { confirm = null },
+                title = { Text("Reject this call?") },
+                text = { Text("It passes to the next person on call straight away, and you won't be able to accept it later.") },
+                confirmButton = {
+                    TextButton({
+                        confirm = null
+                        work.run(scope, { Api.post("/api/board/calls/${what.removePrefix("reject:")}/reject") }) { reload++ }
+                    }) { Text("Reject") }
+                },
+                dismissButton = { TextButton({ confirm = null }) { Text("Cancel") } },
+            )
+            return@let
+        }
         AlertDialog(
             onDismissRequest = { confirm = null },
             title = { Text(if (what == "siren") "Sound the siren?" else "Close this trip?") },
@@ -428,6 +433,88 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
             },
             dismissButton = { TextButton({ confirm = null }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+fun OnCallScreen(go: (Screen) -> Unit) {
+    var s by remember { mutableStateOf<JSONObject?>(null) }
+    var reload by remember { mutableIntStateOf(0) }
+    var adding by remember { mutableStateOf(false) }
+    val work = rememberWork()
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(reload) {
+        while (true) {
+            withContext(Dispatchers.IO) { runCatching { Api.get("/api/oncall") } }.onSuccess { s = it; onCall = it.getJSONObject("me").optBoolean("on_call") }
+            delay(30_000)
+        }
+    }
+    // The reply is the new state. Set it after the IO thread is done, on the main thread.
+    fun change(path: String, body: JSONObject) {
+        var reply: JSONObject? = null
+        work.run(scope, { reply = Api.post(path, body) }) { reply?.let { s = it; onCall = it.getJSONObject("me").optBoolean("on_call") } }
+    }
+    fun at(ms: Long) = "${android.text.format.DateFormat.format("EEE", ms)} ${hhmm(ms)}"
+    OpsPage {
+        DisplayText("On call")
+        val st = s ?: run { Text("Loading…", color = Muted); return@OpsPage }
+        val admin = Store.role == "admin"
+        val now = st.optJSONObject("on_now")
+        val me = st.getJSONObject("me")
+        ErrorBanner(work.error)
+        Card("On call now") {
+            if (now == null) Text("Nobody is on call. Alerts go to every operator and admin.", color = Z9)
+            else Text(now.optString("name") + (if (st.isNull("until")) ", with nobody else available to take over" else " until ${at(st.getLong("until"))}"),
+                color = Z9, fontWeight = FontWeight.Bold)
+            st.optJSONObject("next")?.takeIf { !st.isNull("until") }?.let { Text("Next: ${it.optString("name")} from ${at(st.getLong("until"))}", color = ZM) }
+            val h = st.optInt("shift_hours")
+            Text("Shifts of $h ${if (h == 1) "hour" else "hours"} from 06:00. An alert passes to the next person after ${st.optInt("no_response_minutes")} min with no answer.",
+                color = ZM, fontSize = 13.sp)
+        }
+        if (me.optBoolean("on_roster")) Card("You") {
+            val avail = me.optBoolean("available")
+            Text(if (avail) "You're available. Alerts can come to you." else "You're unavailable. You're skipped until you switch back.", color = Z9)
+            GButton(if (avail) "Make me unavailable" else "Make me available", if (avail) Btn.Outline else Btn.Navy, small = true, enabled = !work.busy) {
+                change("/api/oncall/availability", JSONObject().put("available", if (avail) "0" else "1"))
+            }
+        }
+        val roster = st.getJSONArray("roster")
+        Card("Order · ${roster.length()}") {
+            if (roster.length() == 0) Text("Nobody is on the list yet.", color = ZM)
+            for (i in 0 until roster.length()) {
+                val r = roster.getJSONObject(i)
+                val id = r.getString("user_id")
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(r.optString("name"), color = Z9, fontWeight = FontWeight.Bold)
+                    Text((if (r.optBoolean("on_now")) "On call now" else if (r.optBoolean("available")) "Available" else "Unavailable") +
+                        (if (r.optInt("devices") == 0) " · No device gets alerts" else ""), color = if (r.optInt("devices") == 0) RedInk else ZM, fontSize = 13.sp)
+                    if (admin) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        GButton("↑", Btn.Outline, small = true, enabled = !work.busy && i > 0, modifier = Modifier.weight(1f)) {
+                            change("/api/oncall/move", JSONObject().put("user_id", id).put("dir", "up"))
+                        }
+                        GButton("↓", Btn.Outline, small = true, enabled = !work.busy && i < roster.length() - 1, modifier = Modifier.weight(1f)) {
+                            change("/api/oncall/move", JSONObject().put("user_id", id).put("dir", "down"))
+                        }
+                        GButton(if (r.optBoolean("available")) "Unavailable" else "Available", Btn.Outline, small = true, enabled = !work.busy, modifier = Modifier.weight(2f)) {
+                            change("/api/oncall/availability", JSONObject().put("user_id", id).put("available", if (r.optBoolean("available")) "0" else "1"))
+                        }
+                        GButton("", Btn.Outline, "x", small = true, enabled = !work.busy, modifier = Modifier.weight(1f)) {
+                            change("/api/oncall/remove", JSONObject().put("user_id", id))
+                        }
+                    }
+                }
+            }
+            val candidates = st.optJSONArray("candidates") ?: JSONArray()
+            if (admin && candidates.length() > 0) Box {
+                GButton("Add someone", Btn.Outline, "plus", small = true, enabled = !work.busy) { adding = true }
+                DropdownMenu(adding, { adding = false }) {
+                    for (i in 0 until candidates.length()) {
+                        val u = candidates.getJSONObject(i)
+                        DropdownMenuItem({ Text(u.optString("name")) }, { adding = false; change("/api/oncall/add", JSONObject().put("user_id", u.getString("user_id"))) })
+                    }
+                }
+            }
+        }
     }
 }
 

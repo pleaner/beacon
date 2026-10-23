@@ -1,6 +1,7 @@
 import type { FC } from 'hono/jsx'
 import { ACTIVITIES, type Activity } from '../lib/constants'
 import type { User } from '../lib/db'
+import { SHIFT_HOURS } from '../lib/oncall'
 import { formatPhone } from '../lib/phone'
 import { EmergencyCard, PersonCard } from './board'
 import { Icon } from './icons'
@@ -17,8 +18,8 @@ const Banners: FC<{ error?: string; saved?: boolean; sent?: string | null }> = (
 )
 
 export const AdminPage: FC<{
-  tab: AdminTab; users: User[]; me: User; activity: Activity; items: string[]; grace: string; sms: string; sent: string | null; saved: boolean; error?: string; q?: string
-}> = ({ tab, users, me, activity, items, grace, sms, sent, saved, error, q = '' }) => {
+  tab: AdminTab; users: User[]; me: User; activity: Activity; items: string[]; grace: string; sms: string; shiftHours: string; noResponse: string; sent: string | null; saved: boolean; error?: string; q?: string
+}> = ({ tab, users, me, activity, items, grace, sms, shiftHours, noResponse, sent, saved, error, q = '' }) => {
   const needle = q.trim().toLowerCase()
   const shown = needle ? users.filter((u) => [u.name, u.email, u.phone].some((v) => v?.toLowerCase().includes(needle))) : users
   return (
@@ -119,6 +120,18 @@ export const AdminPage: FC<{
               <label for="s-sms">SARZA text number</label>
               <p class="muted" style="margin: 0; font-size: 14px;">When a call for help can't get through, explorers get a button to text this number. Leave blank to hide it.</p>
               <input id="s-sms" name="sms_number" type="tel" value={sms} placeholder="+27 82 123 4567" />
+            </div>
+            <div class="field">
+              <label for="s-shift">On-call shift length</label>
+              <p class="muted" style="margin: 0; font-size: 14px;">Shifts start at 06:00 and follow the order on the On call page.</p>
+              <select id="s-shift" name="shift_hours">
+                {SHIFT_HOURS.map((h) => <option value={String(h)} selected={String(h) === shiftHours}>{h} {h === 1 ? 'hour' : 'hours'}</option>)}
+              </select>
+            </div>
+            <div class="field">
+              <label for="s-answer">Time to answer, in minutes</label>
+              <p class="muted" style="margin: 0; font-size: 14px;">How long an alert waits for the person on call before it passes to the next person.</p>
+              <input id="s-answer" name="no_response_minutes" type="number" min={1} max={60} value={noResponse} />
             </div>
             <button class="btn" type="submit">Save</button>
           </form>

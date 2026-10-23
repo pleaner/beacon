@@ -9,7 +9,9 @@ import { normalizePhone } from '../lib/phone'
 import { verifyGoogleToken } from '../lib/oauth'
 import { getPlaceLookup } from '../lib/places'
 import { saveMessageMedia, savePhoto } from '../lib/photos'
-import { FCM_PREFIX, getSender, helpPayload, pushToRoles, pushToUser } from '../lib/push'
+import { acceptCall, callsForTrip, callsJson, getCall, noteOnCalls, raiseCall, rejectCall } from '../lib/calls'
+import { addToRoster, isOnCall, moveInRoster, onCallState, removeFromRoster, setAvailable, syncShift } from '../lib/oncall'
+import { FCM_PREFIX, getSender, pushToRoles, pushToUser } from '../lib/push'
 import { adminSetStatus, ADMIN_STATUSES, cancelHelp, extendTrip, getOpenTrip, getTrip, listCompanions, listOpenTrips, listPets, soundSiren, tripLine, tripPlace, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setPets, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
 import { newTripPage, profilePage } from './explorer'
 import { needsProfile, userFor } from './auth'
@@ -213,6 +215,9 @@ api.get('/place', requireApiRole('explorer', 'operator', 'admin'), async (c) => 
   }
 })
 
+// The action is already saved; a failure to note it on a call record must not turn it into an error.
+const noteFailed = (e: unknown) => console.error('noting on calls failed', String(e))
+
 api.post('/trips/:id/extend', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
@@ -227,13 +232,16 @@ api.post('/trips/:id/extend', requireApiRole('explorer', 'operator', 'admin'), a
   }
   if (!return_by) return tripFail(c, 'Pick a time in the future', 400)
   if (!(await extendTrip(c.env.DB, trip.id, return_by, now))) return tripFail(c, "We couldn't add time. Your trip may have ended already.", 409)
+  await noteOnCalls(c.env.DB, trip.id, now, 'extended', c.var.user!.id, 'all').catch(noteFailed)
   return done(c, { return_by }, '/trip')
 })
 
 api.post('/trips/:id/back', requireApiRole('explorer', 'operator', 'admin'), async (c) => {
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
-  if (!(await markBack(c.env.DB, trip.id, Date.now()))) return tripFail(c, 'That trip has already ended.', 409)
+  const now = Date.now()
+  if (!(await markBack(c.env.DB, trip.id, now))) return tripFail(c, 'That trip has already ended.', 409)
+  await noteOnCalls(c.env.DB, trip.id, now, 'back', c.var.user!.id, 'all').catch(noteFailed)
   return done(c, { ok: true }, `/trips/${trip.id}/done`)
 })
 
@@ -251,9 +259,12 @@ api.post('/trips/:id/help', requireApiRole('explorer', 'operator', 'admin'), asy
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
   if (trip.status === 'help') return done(c, { ok: true }, '/trip')
-  if (!(await requestHelp(c.env.DB, trip.id, Date.now()))) return tripFail(c, 'That trip has already ended. Phone SARZA if you need help.', 409)
-  const { sent } = await pushToRoles(c.env.DB, getSender(c.env), ['operator', 'admin'], helpPayload(user, trip))
-  if (sent > 0) await markHelpAlerted(c.env.DB, trip.id, Date.now())
+  const now = Date.now()
+  if (!(await requestHelp(c.env.DB, trip.id, now))) return tripFail(c, 'That trip has already ended. Phone SARZA if you need help.', 409)
+  // Raise the help call first so a failed note never holds up the alert, then note it on any overdue call already open.
+  const { sent } = await raiseCall(c.env.DB, getSender(c.env), trip.id, 'help', now)
+  await noteOnCalls(c.env.DB, trip.id, now, 'help', user.id, null).catch(noteFailed)
+  if (sent > 0) await markHelpAlerted(c.env.DB, trip.id, now)
   else console.error('help request reached no operators', trip.id)
   return done(c, { ok: true }, '/trip')
 })
@@ -262,6 +273,7 @@ api.post('/trips/:id/cancel', requireApiRole('explorer', 'operator', 'admin'), a
   const trip = await ownTrip(c, c.req.param('id'))
   if (!trip) return c.json({ error: 'Not found' }, 404)
   if (!(await cancelHelp(c.env.DB, trip.id))) return tripFail(c, "You've already cancelled that call for help.", 409)
+  await noteOnCalls(c.env.DB, trip.id, Date.now(), 'help_cancelled', c.var.user!.id, 'help').catch(noteFailed)
   return done(c, { ok: true }, '/trip')
 })
 
@@ -338,9 +350,10 @@ api.post('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'),
   const short = said.length > 120 ? said.slice(0, 119) + '…' : said
   const tag = `chat-${trip.id}`
   const send = getSender(c.env)
+  const toOps = { title: `Message from ${user.name}`, body: short, url: `/board/messages/${trip.id}`, tag, kind: 'message' as const }
   c.executionCtx.waitUntil(
     (user.role === 'explorer'
-      ? pushToRoles(c.env.DB, send, ['operator', 'admin'], { title: `Message from ${user.name}`, body: short, url: `/board/trips/${trip.id}`, tag, kind: 'message' })
+      ? pushToRoles(c.env.DB, send, ['operator', 'admin'], toOps)
       : pushToUser(c.env.DB, send, trip.user_id, { title: `SARZA: ${user.name}`, body: short, url: '/trip', tag, kind: 'message' })
     ).then((r) => { if (!r.sent) console.warn('message notification reached no one', trip.id, user.role === 'explorer' ? 'to operators' : 'to explorer') }),
   )
@@ -348,7 +361,10 @@ api.post('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'),
 })
 
 api.post('/board/trips/:id/close', requireApiRole('operator', 'admin'), async (c) => {
-  if (!(await operatorClose(c.env.DB, c.req.param('id'), Date.now()))) return c.json({ error: 'Trip is already closed' }, 409)
+  const id = c.req.param('id')
+  const now = Date.now()
+  if (!(await operatorClose(c.env.DB, id, now))) return c.json({ error: 'Trip is already closed' }, 409)
+  await noteOnCalls(c.env.DB, id, now, 'closed_trip', c.var.user!.id, 'all').catch(noteFailed)
   return done(c, { ok: true }, '/board')
 })
 
@@ -364,6 +380,8 @@ api.post('/admin/trips/:id/status', requireApiRole('admin'), async (c) => {
     const error = 'This explorer already has another open trip. Close that one first.'
     return wantsJson(c) ? c.json({ error }, 409) : c.redirect(`${back}?error=${encodeURIComponent(error)}`, 303)
   }
+  // Setting a trip active or closed by hand ends its calls; overdue and help raise new ones through the cron.
+  await noteOnCalls(c.env.DB, id, Date.now(), 'admin_status', c.var.user!.id, status === 'active' || status === 'closed' ? 'all' : null, status).catch(noteFailed)
   return done(c, { ok: true }, `${back}?saved=1`)
 })
 
@@ -436,7 +454,10 @@ api.post('/push/device', requireApiRole('explorer', 'operator', 'admin'), async 
 api.get('/board', requireApiRole('operator', 'admin'), async (c) => {
   const trips = await listOpenTrips(c.env.DB)
   const last = await lastPositionsByTrip(c.env.DB, trips.map((t) => t.id))
-  return c.json({ trips: trips.map((t) => ({ ...t, place: tripPlace(t), line: tripLine(t), last: last.get(t.id) ?? null })) })
+  return c.json({
+    trips: trips.map((t) => ({ ...t, place: tripPlace(t), line: tripLine(t), last: last.get(t.id) ?? null })),
+    on_call: await isOnCall(c.env.DB, c.var.user!.id, Date.now()),
+  })
 })
 
 api.get('/board/messages', requireApiRole('operator', 'admin'), async (c) => {
@@ -448,19 +469,90 @@ api.get('/board/trips/:id', requireApiRole('operator', 'admin'), async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id'))
   const user = trip && (await getUserById(c.env.DB, trip.user_id))
   if (!trip || !user) return c.json({ error: 'Not found' }, 404)
-  const [positions, companions, messages] = await Promise.all([
+  const [positions, companions, messages, calls, onCall] = await Promise.all([
     listPositions(c.env.DB, trip.id, 50), listCompanions(c.env.DB, trip.id), listMessages(c.env.DB, trip.id),
+    callsForTrip(c.env.DB, trip.id), isOnCall(c.env.DB, c.var.user!.id, Date.now()),
   ])
-  return c.json({ trip: { ...trip, place: tripPlace(trip), line: tripLine(trip) }, user: publicUser(user), positions, companions, messages })
+  return c.json({
+    trip: { ...trip, place: tripPlace(trip), line: tripLine(trip) }, user: publicUser(user), positions, companions, messages,
+    calls: callsJson(calls, c.var.user!.id), on_call: onCall,
+  })
 })
 
 // Sound the explorer's siren: pushed now, and repeated in the reply to the phone's next position upload.
 api.post('/board/trips/:id/siren', requireApiRole('operator', 'admin'), async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id'))
-  if (!trip || !(await soundSiren(c.env.DB, trip.id, Date.now()))) return c.json({ error: 'Trip is closed' }, 409)
+  const now = Date.now()
+  if (!trip || !(await soundSiren(c.env.DB, trip.id, now))) return c.json({ error: 'Trip is closed' }, 409)
+  await noteOnCalls(c.env.DB, trip.id, now, 'siren', c.var.user!.id, null).catch(noteFailed)
   const send = getSender(c.env)
   c.executionCtx.waitUntil(pushToUser(c.env.DB, send, trip.user_id, {
     title: 'SARZA is looking for you', body: 'Your phone is sounding so searchers can find you.', url: '/trip', tag: 'siren', kind: 'siren',
   }))
   return done(c, { ok: true }, `/board/trips/${trip.id}`)
 })
+
+// ---------- on call ----------
+
+async function afterRosterChange(c: Context<AppEnv>) {
+  const now = Date.now()
+  await syncShift(c.env.DB, getSender(c.env), now)
+  return done(c, await onCallState(c.env.DB, c.var.user!, now), '/board/oncall')
+}
+
+api.get('/oncall', requireApiRole('operator', 'admin'), async (c) => c.json(await onCallState(c.env.DB, c.var.user!, Date.now())))
+
+// Anyone on the list sets their own availability. Admins can set anyone's, for someone who forgot.
+api.post('/oncall/availability', requireApiRole('operator', 'admin'), async (c) => {
+  const me = c.var.user!
+  const b = await readBody(c)
+  const who = str(b, 'user_id') ?? me.id
+  if (who !== me.id && me.role !== 'admin') return c.json({ error: "Only admins can change someone else's availability" }, 403)
+  if (!(await setAvailable(c.env.DB, who, str(b, 'available') === '1'))) return c.json({ error: 'Not on the on-call list' }, 404)
+  return afterRosterChange(c)
+})
+
+api.post('/oncall/add', requireApiRole('admin'), async (c) => {
+  const id = str(await readBody(c), 'user_id')
+  const u = id ? await getUserById(c.env.DB, id) : null
+  if (!u || (u.role !== 'operator' && u.role !== 'admin')) return c.json({ error: 'Pick an operator or admin' }, 400)
+  await addToRoster(c.env.DB, u.id)
+  return afterRosterChange(c)
+})
+
+api.post('/oncall/remove', requireApiRole('admin'), async (c) => {
+  const id = str(await readBody(c), 'user_id')
+  if (id) await removeFromRoster(c.env.DB, id)
+  return afterRosterChange(c)
+})
+
+api.post('/oncall/move', requireApiRole('admin'), async (c) => {
+  const b = await readBody(c)
+  const id = str(b, 'user_id')
+  if (id) await moveInRoster(c.env.DB, id, str(b, 'dir') === 'up' ? -1 : 1)
+  return afterRosterChange(c)
+})
+
+const CALL_ERRORS: Record<string, string> = {
+  taken: 'Someone else accepted this call first.',
+  rejected: 'You rejected this call.',
+  not_yours: "This call hasn't reached you, so there's nothing to reject.",
+  closed: 'This call has ended.',
+}
+
+async function callAnswer(c: Context<AppEnv>, answer: 'accept' | 'reject') {
+  const call = await getCall(c.env.DB, c.req.param('id')!)
+  if (!call) return c.json({ error: 'Not found' }, 404)
+  const now = Date.now()
+  const user = c.var.user!
+  const r = answer === 'accept'
+    ? await acceptCall(c.env.DB, call.id, user.id, now)
+    : await rejectCall(c.env.DB, getSender(c.env), call.id, user.id, now)
+  const page = `/board/trips/${call.trip_id}`
+  const error = r === 'accepted' || (answer === 'reject' && r === 'rejected') ? null : CALL_ERRORS[r]!
+  if (error) return wantsJson(c) ? c.json({ error }, 409) : c.redirect(`${page}?error=${encodeURIComponent(error)}`, 303)
+  return done(c, { ok: true }, page)
+}
+
+api.post('/board/calls/:id/accept', requireApiRole('operator', 'admin'), (c) => callAnswer(c, 'accept'))
+api.post('/board/calls/:id/reject', requireApiRole('operator', 'admin'), (c) => callAnswer(c, 'reject'))

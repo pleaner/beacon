@@ -38,6 +38,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
@@ -384,7 +385,7 @@ fun Page(background: Color = Ground, gap: Dp = 20.dp, top: Dp = 24.dp, content: 
 }
 
 // The app bar on every screen: navy, the badge, GUARDIAN / SARZA SEARCH & RESCUE, a yellow strip below. Signed in, the menu
-// holds the profile and sign out.
+// holds the profile and sign out, and for operators and admins Travel and Active trips.
 @Composable
 fun AppBar(go: ((Screen) -> Unit)?) = Column(Modifier.background(Navy).statusBarsPadding()) {
     Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 52.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -397,11 +398,24 @@ fun AppBar(go: ((Screen) -> Unit)?) = Column(Modifier.background(Navy).statusBar
             val scope = rememberCoroutineScope()
             val work = rememberWork()
             var open by remember { mutableStateOf(false) }
+            if (onCall) Row(
+                Modifier.height(30.dp).background(Yellow, RoundedCornerShape(15.dp)).clickable { go(Screen.OnCall) }.padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                GIcon("bell", Ink, 15.dp)
+                Text("On call", color = Ink, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false)
+            }
             Box {
                 Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable { open = true }, contentAlignment = Alignment.Center) {
                     GIcon("menu", Color.White, 24.dp)
                 }
                 DropdownMenu(open, { open = false }) {
+                    if (Store.role != "explorer") {
+                        DropdownMenuItem({ Text("Travel") }, { open = false; go(Screen.Home) })
+                        DropdownMenuItem({ Text("Active trips") }, { open = false; go(Screen.Board) })
+                        DropdownMenuItem({ Text("On call") }, { open = false; go(Screen.OnCall) })
+                        HorizontalDivider()
+                    }
                     DropdownMenuItem({ Text("Your profile") }, { open = false; go(Screen.Profile) })
                     DropdownMenuItem({ Text("Sign out") }, {
                         open = false
