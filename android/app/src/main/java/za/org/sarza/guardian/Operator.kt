@@ -166,74 +166,36 @@ private fun TripRow(t: JSONObject, onClick: () -> Unit) {
     }
 }
 
+// One trip's chat on its own, reached from the toggle on the trip page.
 @Composable
-fun MessagesScreen(go: (Screen) -> Unit) {
-    var threads by remember { mutableStateOf<JSONArray?>(null) }
-    var offline by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            val r = withContext(Dispatchers.IO) { runCatching { Api.get("/api/board/messages").getJSONArray("threads") } }
-            r.onSuccess { threads = it }
-            offline = r.isFailure
-            if ((r.exceptionOrNull() as? Api.Failed)?.status == 401) { Store.signOut(); go(Screen.Welcome); return@LaunchedEffect }
-            delay(30_000)
-        }
-    }
-    OpsPage {
-        Row(verticalAlignment = Alignment.Bottom) {
-            DisplayText("Messages", modifier = Modifier.weight(1f))
-            Text("Refreshes every 30 s", color = Muted, fontSize = 13.sp)
-        }
-        if (offline) Banner(RedT, RedInk) { Text("No connection. Showing what we had.", fontWeight = FontWeight.SemiBold) }
-        val all = threads?.let { a -> List(a.length()) { a.getJSONObject(it) } }
-        if (all == null) Text("Loading…", color = Muted)
-        else if (all.isEmpty()) Text("No messages on open trips.", color = Muted)
-        for (t in all.orEmpty()) ThreadRow(t) { go(Screen.BoardTrip(t.getString("trip_id"))) }
-    }
+fun ChatScreen(id: String, name: String, go: (Screen) -> Unit) = Column(Modifier.fillMaxSize().imePadding()) {
+    Column(Modifier.background(ZA).padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)) { TripHeader(id, name, chat = true, go) }
+    Chat(id, "Message", mine = "operator", modifier = Modifier.weight(1f).navigationBarsPadding(), card = false)
 }
 
+// The top of the trip page and its chat, identical on both: back, the traveller's name, then Trip and Chat side by side.
 @Composable
-private fun ThreadRow(t: JSONObject, onClick: () -> Unit) {
-    val help = t.optString("status") == "help"
-    val shape = RoundedCornerShape(12.dp)
-    val body = t.optString("last_body").takeUnless { t.isNull("last_body") || it.isEmpty() }
-        ?: t.optString("last_media_type").let { if (it.startsWith("image/")) "Photo" else if (it.startsWith("audio/")) "Voice note" else "" }
-    val who = if (t.optString("last_author_role") == "operator") "SARZA" else t.optString("user_name").substringBefore(' ')
-    Column(
-        Modifier.fillMaxWidth().clip(shape).background(if (help) RedT else Color.White).border(1.dp, if (help) Red else ZB, shape).clickable(onClick = onClick).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(t.optString("status"))
-            Text(t.optString("user_name"), Modifier.weight(1f), color = Z9, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-            Text(ago(t.optLong("last_at")), color = ZM, fontSize = 13.sp)
-        }
-        Text(t.optString("line"), color = ZM, fontSize = 14.sp)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GIcon("chat", ZM, 16.dp)
-            Text("$who: $body", Modifier.weight(1f), color = Z9, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text("${t.optInt("count")}", color = ZM, fontSize = 13.sp)
-        }
+private fun TripHeader(id: String, name: String, chat: Boolean, go: (Screen) -> Unit) = Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Row(Modifier.clickable { go(Screen.Board) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        GIcon("back", Z9, 16.dp)
+        Text("Board", color = Z9, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     }
+    DisplayText(name.ifEmpty { " " }, size = 36.sp)
+    TripChatToggle(id, name, chat, go)
 }
 
-// The operator's tabs along the bottom: the explorer app, the board, and chat threads.
+// Trip and Chat side by side, styled like the board's filter.
 @Composable
-fun OpsTabs(current: Screen, go: (Screen) -> Unit) = Column(Modifier.background(Color.White).navigationBarsPadding()) {
-    Box(Modifier.fillMaxWidth().height(1.dp).background(ZB))
-    Row(Modifier.fillMaxWidth().height(60.dp)) {
-        for ((screen, icon, label) in listOf(Triple(Screen.Home, "hike", "Travel"), Triple(Screen.Board, "board", "Active trips"), Triple(Screen.Messages, "chat", "Messages"))) {
-            val on = current == screen || (screen == Screen.Home && current is Screen.HomeNotice)
-            Column(
-                Modifier.weight(1f).fillMaxSize().clickable { if (!on) go(screen) },
-                verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                GIcon(icon, if (on) Navy else ZM, 22.dp)
-                Text(label, color = if (on) Navy else ZM, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.SemiBold)
-            }
+private fun TripChatToggle(id: String, name: String, chat: Boolean, go: (Screen) -> Unit) =
+    Row(Modifier.fillMaxWidth().background(ZB.copy(alpha = .6f), RoundedCornerShape(12.dp)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        for ((isChat, label) in listOf(false to "Trip", true to "Chat")) {
+            Box(
+                Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(9.dp)).background(if (chat == isChat) Color.White else Color.Transparent)
+                    .clickable(enabled = chat != isChat) { go(if (isChat) Screen.Chat(id, name) else Screen.BoardTrip(id)) },
+                contentAlignment = Alignment.Center,
+            ) { Text(label, color = if (chat == isChat) Z9 else ZM, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
         }
     }
-}
 
 // A white card with a heading, as the web's .card.
 @Composable
@@ -271,10 +233,7 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
         }
     }
     OpsPage {
-        Row(Modifier.clickable { go(Screen.Board) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            GIcon("back", Z9, 16.dp)
-            Text("Board", color = Z9, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        }
+        TripHeader(id, detail?.optJSONObject("user")?.optString("name").orEmpty(), chat = false, go)
         val d = detail ?: run { Text("Loading…", color = Muted); return@OpsPage }
         val t = d.getJSONObject("trip")
         val u = d.getJSONObject("user")
@@ -285,7 +244,6 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
         val backText = "${android.text.format.DateFormat.format("EEE", back)} ${hhmm(back)}"
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row { Pill(status) }
-            DisplayText(u.optString("name"), size = 36.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GIcon(ACTIVITY_ICON[t.optString("activity")] ?: "other", Z9, 18.dp, modifier = Modifier.padding(top = 2.dp))
                 Text("${t.optString("line")} · back by $backText", color = Z9)
@@ -295,9 +253,6 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
 
         val positions = d.getJSONArray("positions")
         val p = if (positions.length() > 0) positions.getJSONObject(0) else null
-        if (p != null) Banner(YellowT, Ink, border = YellowLine) {
-            Text("Last position ${ago(p.optLong("at"))}. Positions arrive every two minutes while a trip is on. Silence means the phone is off, flat, or out of signal.")
-        }
         Card("Last position") {
             if (p == null) {
                 Text("None yet.", color = ZM)
@@ -317,7 +272,6 @@ fun BoardTripScreen(id: String, go: (Screen) -> Unit) {
                 }
             }
         }
-        Chat(id, "Message $first", mine = "operator", modifier = Modifier.heightIn(max = 420.dp), card = true)
 
         val checklist = runCatching { JSONArray(t.optString("checklist_json")) }.getOrNull()?.let { a -> List(a.length()) { a.getString(it) } }.orEmpty()
         Card("Plan") {

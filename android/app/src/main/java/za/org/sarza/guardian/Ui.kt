@@ -385,7 +385,7 @@ fun Page(background: Color = Ground, gap: Dp = 20.dp, top: Dp = 24.dp, content: 
 }
 
 // The app bar on every screen: navy, the badge, GUARDIAN / SARZA SEARCH & RESCUE, a yellow strip below. Signed in, the menu
-// holds the profile and sign out, and for operators and admins the three sections from the bottom tabs too.
+// holds the profile and sign out, and for operators and admins Travel and Active trips.
 @Composable
 fun AppBar(go: ((Screen) -> Unit)?) = Column(Modifier.background(Navy).statusBarsPadding()) {
     Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 52.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -406,7 +406,6 @@ fun AppBar(go: ((Screen) -> Unit)?) = Column(Modifier.background(Navy).statusBar
                     if (Store.role != "explorer") {
                         DropdownMenuItem({ Text("Travel") }, { open = false; go(Screen.Home) })
                         DropdownMenuItem({ Text("Active trips") }, { open = false; go(Screen.Board) })
-                        DropdownMenuItem({ Text("Messages") }, { open = false; go(Screen.Messages) })
                         HorizontalDivider()
                     }
                     DropdownMenuItem({ Text("Your profile") }, { open = false; go(Screen.Profile) })

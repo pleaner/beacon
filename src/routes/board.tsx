@@ -3,7 +3,7 @@ import type { AppEnv } from '../env'
 import { getUserById, lastPositionsByTrip, listMessages, listMessageThreads, listPositions } from '../lib/db'
 import { requireRole } from '../lib/middleware'
 import { getTrip, listCompanions, listOpenTrips, tripLine, tripPlace } from '../lib/trips'
-import { Board, Brief, Messages, STATUSES, TripDetail } from '../views/board'
+import { Board, Brief, Chat, Messages, STATUSES, TripDetail } from '../views/board'
 import { Layout } from '../views/layout'
 
 export const board = new Hono<AppEnv>()
@@ -33,12 +33,32 @@ board.get('/board', async (c) => {
   )
 })
 
-// Every open trip's chat in one list, newest first. Each row opens the trip, scrolled to its messages.
+// Every open trip's chat in one list, newest first. Each row opens that trip's chat on its own.
 board.get('/board/messages', async (c) => {
   const threads = await listMessageThreads(c.env.DB)
   return c.html(
     <Layout title="Messages" user={c.var.user} bodyAttrs={{ 'data-refresh': '30' }} current="messages">
       <Messages threads={threads} now={Date.now()} />
+    </Layout>,
+  )
+})
+
+board.get('/board/messages/:id', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id'))
+  if (!trip) return c.text('Not found', 404)
+  const [user, messages] = await Promise.all([getUserById(c.env.DB, trip.user_id), listMessages(c.env.DB, trip.id)])
+  if (!user) return c.text('Not found', 404)
+  const first = user.name.split(' ')[0]
+  return c.html(
+    <Layout title="Messages" user={c.var.user} current="messages">
+      <main>
+        <p><a href="/board/messages">‹ Messages</a></p>
+        <div class="row" style="justify-content: space-between; align-items: baseline;">
+          <h1 class="display">{user.name}</h1>
+          <a href={`/board/trips/${trip.id}`}>Trip</a>
+        </div>
+        <Chat tripId={trip.id} messages={messages} placeholder={`Message ${first}`} me="operator" />
+      </main>
     </Layout>,
   )
 })

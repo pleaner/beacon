@@ -68,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -816,7 +817,7 @@ fun fixLine(p: JSONObject): String {
     return "${deg(p.getDouble("lat"), "N", "S")}, ${deg(p.getDouble("lng"), "E", "W")}$alt"
 }
 
-// Messages between the explorer and SARZA: a pale panel, bubbles, and a round composer at the bottom.
+// Messages between the explorer and SARZA, laid out like WhatsApp, in SARZA colours: navy bubbles for mine, white for theirs, a pill composer.
 @Composable
 fun Chat(tripId: String, placeholder: String, mine: String, modifier: Modifier = Modifier, card: Boolean = false) {
     var messages by remember { mutableStateOf(JSONArray()) }
@@ -834,11 +835,9 @@ fun Chat(tripId: String, placeholder: String, mine: String, modifier: Modifier =
     // On the help screen it's a pale panel that fills the bottom; on the operator's trip page, a white card that fits its thread.
     val shape = if (card) RoundedCornerShape(12.dp) else RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
     Column(
-        modifier.fillMaxWidth().clip(shape).background(if (card) Color.White else NavyT)
-            .then(if (card) Modifier.border(1.dp, Color(0xFFE4E4E7), shape) else Modifier).padding(start = 12.dp, end = 12.dp, top = 14.dp),
+        modifier.fillMaxWidth().clip(shape).background(NavyT)
+            .then(if (card) Modifier.border(1.dp, Color(0xFFE4E4E7), shape) else Modifier).padding(start = 10.dp, end = 10.dp, top = 8.dp),
     ) {
-        if (card) Text("Messages", color = Color(0xFF09090B), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        else Text("Messages", Modifier.fillMaxWidth(), color = Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         Column(
             Modifier.weight(1f, fill = !card).fillMaxWidth().verticalScroll(list).padding(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.Bottom),
@@ -848,11 +847,13 @@ fun Chat(tripId: String, placeholder: String, mine: String, modifier: Modifier =
                 val me = m.optString("author_role") == mine
                 val media = m.optString("media_type").takeIf { !m.isNull("media_type") }
                 val body = m.optString("body").ifEmpty { if (media?.startsWith("audio/") == true) "Voice note" else "Photo" }
+                // The sharp top corner on the sender's side stands in for WhatsApp's tail.
+                val bubble = if (me) RoundedCornerShape(8.dp, 0.dp, 8.dp, 8.dp) else RoundedCornerShape(0.dp, 8.dp, 8.dp, 8.dp)
                 Column(
-                    Modifier.align(if (me) Alignment.End else Alignment.Start).widthIn(max = 300.dp)
-                        .background(if (me) Navy else Color.White, RoundedCornerShape(10.dp)).padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 5.dp),
+                    Modifier.align(if (me) Alignment.End else Alignment.Start).padding(start = if (me) 48.dp else 0.dp, end = if (me) 0.dp else 48.dp)
+                        .shadow(1.dp, bubble).background(if (me) Navy else Color.White, bubble).padding(start = 9.dp, end = 9.dp, top = 6.dp, bottom = 4.dp),
                 ) {
-                    if (!me) Text(m.optString("author_name"), color = Navy, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    if (!me) Text(m.optString("author_name"), color = Navy, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Text(body, color = if (me) Color.White else Ink, fontSize = 15.sp)
                     Text(hhmm(m.optLong("created_at")), Modifier.align(Alignment.End), color = if (me) Color.White.copy(alpha = .7f) else Muted, fontSize = 11.sp)
                 }
@@ -863,7 +864,7 @@ fun Chat(tripId: String, placeholder: String, mine: String, modifier: Modifier =
             BasicTextField(
                 text, { text = it }, Modifier.weight(1f), textStyle = TextStyle(fontFamily = Body, fontSize = 16.sp, color = Ink), cursorBrush = SolidColor(Navy),
                 decorationBox = { inner ->
-                    Box(Modifier.heightIn(min = 46.dp).background(if (card) Ground else Color.White, RoundedCornerShape(23.dp)).padding(horizontal = 16.dp, vertical = 11.dp)) {
+                    Box(Modifier.heightIn(min = 46.dp).shadow(1.dp, RoundedCornerShape(23.dp)).background(Color.White, RoundedCornerShape(23.dp)).padding(horizontal = 16.dp, vertical = 11.dp)) {
                         if (text.isEmpty()) Text(placeholder, color = Color(0xFF8A8FA3), fontSize = 16.sp)
                         inner()
                     }

@@ -340,7 +340,7 @@ api.post('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'),
   const send = getSender(c.env)
   c.executionCtx.waitUntil(
     (user.role === 'explorer'
-      ? pushToRoles(c.env.DB, send, ['operator', 'admin'], { title: `Message from ${user.name}`, body: short, url: `/board/trips/${trip.id}`, tag, kind: 'message' })
+      ? pushToRoles(c.env.DB, send, ['operator', 'admin'], { title: `Message from ${user.name}`, body: short, url: `/board/messages/${trip.id}`, tag, kind: 'message' })
       : pushToUser(c.env.DB, send, trip.user_id, { title: `SARZA: ${user.name}`, body: short, url: '/trip', tag, kind: 'message' })
     ).then((r) => { if (!r.sent) console.warn('message notification reached no one', trip.id, user.role === 'explorer' ? 'to operators' : 'to explorer') }),
   )

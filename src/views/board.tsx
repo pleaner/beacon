@@ -82,7 +82,7 @@ export const Messages: FC<{ threads: MessageThread[]; now: number }> = ({ thread
     </div>
     {threads.length === 0 && <p class="lead">No messages on open trips.</p>}
     {threads.map((t) => (
-      <a class={`trip-row ${t.status}`} href={`/board/trips/${t.trip_id}#messages`}>
+      <a class={`trip-row ${t.status}`} href={`/board/messages/${t.trip_id}`}>
         <div class="l1">
           <span class={`pill ${t.status}`}>{t.status}</span>
           <strong>{t.user_name}</strong>
@@ -262,9 +262,6 @@ export const TripDetail: FC<{
           <a class="btn small outline" href={`/board/trips/${trip.id}/brief`}>Brief for searchers</a>
           <a class="btn small outline" href={`/board/trips/${trip.id}/gpx`} download>GPX for CalTopo</a>
         </div>
-      </div>
-      <div class="banner warn">
-        <span><strong>{last ? `Last position ${ago(last.at, now)}.` : 'No position received.'}</strong> Positions only arrive while their app is open on screen. Silence means the phone is locked, flat, or out of signal.</span>
       </div>
 
       <section class="card">
