@@ -1,9 +1,11 @@
 import type { FC } from 'hono/jsx'
 import { ACTIVITIES, LANGUAGES } from '../lib/constants'
+import type { CallView } from '../lib/calls'
 import { MAX_MESSAGE, signalLabel, type Message, type MessageThread, type Position, type User } from '../lib/db'
 import { formatPhone } from '../lib/phone'
 import { activityName, ADMIN_STATUSES, tripLine, tripPlace, type Companion, type OpenTripRow, type Trip } from '../lib/trips'
 import { Icon, type IconName } from './icons'
+import { CallCard } from './oncall'
 
 export function ago(from: number, now: number): string {
   const mins = Math.floor((now - from) / 60_000)
@@ -228,9 +230,9 @@ const PositionRow: FC<{ p: Position; now: number }> = ({ p, now }) => (
 )
 
 export const TripDetail: FC<{
-  trip: Trip; user: User; positions: Position[]; companions: Companion[]; messages: Message[]; now: number
+  trip: Trip; user: User; positions: Position[]; companions: Companion[]; messages: Message[]; calls: CallView[]; viewerId: string; now: number
   admin?: boolean; saved?: boolean; error?: string
-}> = ({ trip, user, positions, companions, messages, now, admin, saved, error }) => {
+}> = ({ trip, user, positions, companions, messages, calls, viewerId, now, admin, saved, error }) => {
   const last = positions[0]
   const checklist = JSON.parse(trip.checklist_json) as string[]
   const first = user.name.split(' ')[0]
@@ -251,6 +253,7 @@ export const TripDetail: FC<{
       </div>
       {saved && <div class="banner ok" role="status">Trip status saved.</div>}
       {error && <div class="banner error" role="alert">{error}</div>}
+      {calls.map((call) => <CallCard c={call} viewerId={viewerId} />)}
       <div class="stack" style="gap: 8px;">
         <a class="btn red" href={`tel:${user.phone}`}><Icon name="phone" />Phone {first} {formatPhone(user.phone)}</a>
         {user.emergency_phone && (

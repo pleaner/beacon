@@ -4,7 +4,7 @@ import { ACTIVITIES, type Activity } from '../lib/constants'
 import { createUser, deleteUser, getChecklist, getSetting, getUserByEmail, getUserById, listUsers, setChecklist, setSetting, updateUser, type Role } from '../lib/db'
 import { readBody, requireRole, str } from '../lib/middleware'
 import { normalizePhone } from '../lib/phone'
-import { SHIFT_HOURS, syncShift } from '../lib/oncall'
+import { isOnCall, SHIFT_HOURS, syncShift } from '../lib/oncall'
 import { getSender, pushToRoles } from '../lib/push'
 import { ADMIN_TABS, AdminPage, AdminUserPage, type AdminTab } from '../views/admin'
 import { listOpenTrips } from '../lib/trips'
@@ -25,7 +25,7 @@ async function render(c: Context<AppEnv>, over: { tab?: string; error?: string; 
     getSetting(c.env.DB, 'shift_hours', '8'), getSetting(c.env.DB, 'no_response_minutes', '2'),
   ])
   return c.html(
-    <Layout title={ADMIN_TABS[tab]} user={me} current={tab} helpCount={open.filter((t) => t.status === 'help').length}>
+    <Layout title={ADMIN_TABS[tab]} user={me} current={tab} helpCount={open.filter((t) => t.status === 'help').length} onCall={await isOnCall(c.env.DB, me.id, Date.now())}>
       <AdminPage tab={tab} users={users} me={me} activity={activity} items={items} grace={grace} sms={sms} shiftHours={shiftHours} noResponse={noResponse} q={c.req.query('q') ?? ''}
         sent={c.req.query('sent') ?? null} saved={c.req.query('saved') === '1'} error={over.error} />
     </Layout>,
@@ -37,7 +37,7 @@ async function renderUser(c: Context<AppEnv>, id: string, over: { error?: string
   const [user, open] = await Promise.all([getUserById(c.env.DB, id), listOpenTrips(c.env.DB)])
   if (!user) return c.text('Not found', 404)
   return c.html(
-    <Layout title={user.name} user={c.var.user} current="users" helpCount={open.filter((t) => t.status === 'help').length}>
+    <Layout title={user.name} user={c.var.user} current="users" helpCount={open.filter((t) => t.status === 'help').length} onCall={await isOnCall(c.env.DB, c.var.user!.id, Date.now())}>
       <AdminUserPage user={user} me={c.var.user!} now={Date.now()} saved={c.req.query('saved') === '1'} error={over.error} />
     </Layout>,
     over.status ?? 200,

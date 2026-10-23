@@ -135,3 +135,50 @@ describe('settings save', () => {
     expect(await getSetting(env.DB, 'shift_hours', '')).toBe('12')
   })
 })
+
+describe('web pages', () => {
+  it('the On call page shows who is on, the list, and your switch', async () => {
+    const a = await makeOperator({ name: 'Ayanda' })
+    await addToRoster(env.DB, a.user.id)
+    const html = await (await call('/board/oncall', { cookie: cookieFor(a.token) })).text()
+    expect(html).toContain('On call now')
+    expect(html).toContain('Ayanda')
+    expect(html).toContain('No device gets alerts')
+    expect(html).toContain('action="/api/oncall/availability"')
+    expect(html).toContain('class="oncall-chip"')
+    expect(html).not.toContain('action="/api/oncall/add"')
+  })
+
+  it('admins get the add, move and remove controls', async () => {
+    const boss = await makeAdmin()
+    await makeOperator({ name: 'Bongani' })
+    const html = await (await call('/board/oncall', { cookie: cookieFor(boss.token) })).text()
+    expect(html).toContain('action="/api/oncall/add"')
+    expect(html).toContain('Bongani')
+  })
+
+  it('the trip page shows the call, its record, and Accept and Reject for someone it reached', async () => {
+    setSenderForTests(fakeSender().send)
+    const a = await makeOperator({ name: 'Ayanda' })
+    await addToRoster(env.DB, a.user.id)
+    await addSubscription(env.DB, a.user.id, { endpoint: 'https://push.test/a', p256dh: 'k', auth: 'x' })
+    const e = await makeExplorer()
+    const trip = await startTrip(env.DB, e.user.id, { ...base, return_by: Date.now() + 3_600_000 }, Date.now())
+    await raiseCall(env.DB, fakeSender().send, trip.id, 'help', Date.now())
+    const html = await (await call(`/board/trips/${trip.id}`, { cookie: cookieFor(a.token) })).text()
+    expect(html).toContain('Help call')
+    expect(html).toContain('>Accept<')
+    expect(html).toContain('>Reject<')
+    expect(html).toContain('Alert sent to Ayanda (1 device).')
+    const id = (await callsForTrip(env.DB, trip.id))[0]!.id
+    await call(`/api/board/calls/${id}/accept`, form({}, cookieFor(a.token)))
+    const after = await (await call(`/board/trips/${trip.id}`, { cookie: cookieFor(a.token) })).text()
+    expect(after).toContain('Accepted by Ayanda')
+    expect(after).not.toContain('>Accept<')
+  })
+
+  it('the menu links to On call', async () => {
+    const o = await makeOperator()
+    expect(await (await call('/board', { cookie: cookieFor(o.token) })).text()).toContain('href="/board/oncall"')
+  })
+})

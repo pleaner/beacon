@@ -306,6 +306,10 @@ body.help-pending main { min-height: calc(100vh - var(--header)); min-height: ca
 /* ------- operator app (shadcn-style chrome) ------- */
 .ops { background: var(--ground); }
 .me { width: 34px; height: 34px; border-radius: 17px; background: var(--navy); color: var(--yellow); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.oncall-chip { display: inline-flex; margin: 0 10px 0 auto; align-items: center; gap: 5px; height: 30px; padding: 0 10px; border-radius: 15px; background: var(--yellow); color: var(--ink); font-size: 13px; font-weight: 700; text-decoration: none; }
+.record { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.record li { display: flex; gap: 10px; }
+.record time { font-family: var(--mono); color: var(--z9); opacity: .6; flex-shrink: 0; }
 .ops main { padding: 20px 16px 32px; gap: 16px; max-width: 720px; }
 .ops .display { font-size: 36px; }
 .sheet-wrap { position: fixed; inset: 0; z-index: 50; display: none; }

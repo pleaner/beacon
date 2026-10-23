@@ -16,12 +16,14 @@ type Props = PropsWithChildren<{
   // ops only: which menu item is current, and how many trips need help (menu badge).
   current?: string
   helpCount?: number
+  // ops: this person is on call now (top-bar chip).
+  onCall?: boolean
 }>
 
 const FONTS =
   'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap'
 
-export const Layout: FC<Props> = ({ title, user, bodyAttrs = {}, variant, bodyClass, current, helpCount, children }) => {
+export const Layout: FC<Props> = ({ title, user, bodyAttrs = {}, variant, bodyClass, current, helpCount, onCall, children }) => {
   const isOps = user?.role === 'operator' || user?.role === 'admin'
   const v: Variant = variant ?? (isOps ? 'ops' : 'app')
   // Operators and admins switch between the regular app, the board and messages from a bar along the bottom.
@@ -52,7 +54,7 @@ export const Layout: FC<Props> = ({ title, user, bodyAttrs = {}, variant, bodyCl
       </head>
       <body class={cls || undefined} {...bodyAttrs}>
         {/* One header on every page: the logo and name, and the menu on the right once someone is signed in. */}
-        <AppBar user={user} />
+        <AppBar user={user} onCall={onCall} />
         {user && <AppMenu user={user} current={current} />}
         {children}
         {tab && <OpsTabs tab={tab} helpCount={helpCount} />}
@@ -62,7 +64,7 @@ export const Layout: FC<Props> = ({ title, user, bodyAttrs = {}, variant, bodyCl
   )
 }
 
-const AppBar: FC<{ user: User | null }> = ({ user }) => (
+const AppBar: FC<{ user: User | null; onCall?: boolean }> = ({ user, onCall }) => (
   <header class="appbar">
     <div class="inner">
       <a href="/" class="brand">
@@ -72,6 +74,7 @@ const AppBar: FC<{ user: User | null }> = ({ user }) => (
           <small>SARZA Search &amp; Rescue</small>
         </span>
       </a>
+      {onCall && <a class="oncall-chip" href="/board/oncall"><Icon name="bell" size={15} />On call</a>}
       {user && (
         <a class="bar-menu" href="#menu" data-menu-open aria-label="Open menu" aria-controls="menu">
           <Icon name="menu" size={22} />
@@ -109,6 +112,7 @@ const AppMenu: FC<{ user: User; current?: string }> = ({ user, current }) => {
             <>
               {item('/', 'travel', 'hike', 'Travel')}
               {item('/board', 'board', 'board', 'Active trips')}
+              {item('/board/oncall', 'oncall', 'clock', 'On call')}
               {item('/board/messages', 'messages', 'chat', 'Messages')}
               <div class="sep"></div>
             </>
