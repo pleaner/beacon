@@ -99,6 +99,13 @@ describe('help through the on-call roster', () => {
 })
 
 describe('chat during a call', () => {
+  it('falls back to every operator when an open call has no targets yet', async () => {
+    const s = await setup()
+    await env.DB.prepare('INSERT INTO calls (id, trip_id, kind, started_at, next_at) VALUES (?,?,?,?,?)').bind('c-empty', s.trip.id, 'help', Date.now(), Date.now()).run()
+    await call(`/api/trips/${s.trip.id}/messages`, post({ body: 'anyone there' }, s.ec))
+    expect(opEnds(s.f).sort()).toEqual(['https://push.test/a', 'https://push.test/b'])
+  })
+
   // The accept endpoint arrives in Task 4; drop the skip there.
   it.skip('goes to the people the call reached, then only to the person who accepted', async () => {
     const s = await setup()

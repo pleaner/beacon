@@ -350,7 +350,7 @@ api.post('/trips/:id/messages', requireApiRole('explorer', 'operator', 'admin'),
   c.executionCtx.waitUntil(
     (user.role === 'explorer'
       // During a call, only the people it has reached hear it, or only the person who accepted.
-      ? chatRecipients(c.env.DB, trip.id).then((to) => (to ? pushToUsers(c.env.DB, send, to, toOps) : pushToRoles(c.env.DB, send, ['operator', 'admin'], toOps)))
+      ? chatRecipients(c.env.DB, trip.id).then((to) => (to?.length ? pushToUsers(c.env.DB, send, to, toOps) : pushToRoles(c.env.DB, send, ['operator', 'admin'], toOps)))
       : pushToUser(c.env.DB, send, trip.user_id, { title: `SARZA: ${user.name}`, body: short, url: '/trip', tag, kind: 'message' })
     ).then((r) => { if (!r.sent) console.warn('message notification reached no one', trip.id, user.role === 'explorer' ? 'to operators' : 'to explorer') }),
   )
@@ -472,8 +472,9 @@ api.get('/board/trips/:id', requireApiRole('operator', 'admin'), async (c) => {
 // Sound the explorer's siren: pushed now, and repeated in the reply to the phone's next position upload.
 api.post('/board/trips/:id/siren', requireApiRole('operator', 'admin'), async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id'))
-  if (!trip || !(await soundSiren(c.env.DB, trip.id, Date.now()))) return c.json({ error: 'Trip is closed' }, 409)
-  await noteOnCalls(c.env.DB, trip.id, Date.now(), 'siren', c.var.user!.id, null)
+  const now = Date.now()
+  if (!trip || !(await soundSiren(c.env.DB, trip.id, now))) return c.json({ error: 'Trip is closed' }, 409)
+  await noteOnCalls(c.env.DB, trip.id, now, 'siren', c.var.user!.id, null)
   const send = getSender(c.env)
   c.executionCtx.waitUntil(pushToUser(c.env.DB, send, trip.user_id, {
     title: 'SARZA is looking for you', body: 'Your phone is sounding so searchers can find you.', url: '/trip', tag: 'siren', kind: 'siren',

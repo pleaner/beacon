@@ -60,7 +60,10 @@ export async function runCron(env: Env, send: PushSender, now: number) {
     }
   }
 
-  const callsClosed = await closeCallsOfClosedTrips(db, now)
+  const callsClosed = await closeCallsOfClosedTrips(db, now).catch((e) => {
+    console.error('closing calls failed', String(e))
+    return 0
+  })
   const shiftChanged = await syncShift(db, send, now).catch((e) => {
     console.error('shift sync failed', String(e))
     return false
