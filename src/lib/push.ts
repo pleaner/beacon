@@ -10,7 +10,7 @@ export interface PushPayload {
   requireInteraction?: boolean
   // What the native app does with it: 'prompt' and 'siren' ring on the explorer's phone, 'help' and 'overdue' ring on
   // an operator's. Anything else is an ordinary notification.
-  kind?: 'prompt' | 'siren' | 'help' | 'overdue' | 'message'
+  kind?: 'prompt' | 'siren' | 'help' | 'overdue' | 'message' | 'shift'
 }
 
 export type PushSender = (sub: PushSub, payload: PushPayload) => Promise<number>
