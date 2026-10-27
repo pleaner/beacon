@@ -104,9 +104,9 @@ class MainActivity : ComponentActivity() {
             Store.token == null -> Screen.Welcome
             // An open trip comes first, for an admin out on one as much as for an explorer.
             Store.trip != null -> Screen.Trip
-            Store.role != "explorer" -> Screen.Board
-            // Signed in with Google but no phone yet: finish the profile first, like the web does.
+            // No phone yet, explorer or operator: finish the profile first, like the web does.
             Store.me?.optJSONObject("user")?.optString("phone").isNullOrEmpty() -> Screen.Profile
+            Store.role != "explorer" -> Screen.Board
             else -> Screen.Home
         }
     }

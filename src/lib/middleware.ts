@@ -17,6 +17,7 @@ export function requireRole(...roles: Role[]) {
     const user = c.var.user
     if (!user) return c.redirect('/login')
     if (!roles.includes(user.role)) return c.text('Forbidden', 403)
+    if (!user.phone) return c.redirect('/profile')
     await next()
   })
 }

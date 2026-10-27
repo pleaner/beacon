@@ -86,8 +86,9 @@ fun ProfileScreen(go: (Screen) -> Unit) {
     val scope = rememberCoroutineScope()
     // Google sign-in made the account and filled in the name and email. No phone yet means the explorer is new here.
     val isNew = u.isNull("phone") || u.optString("phone").isEmpty()
-    val exit = { go(Screen.Home) }
-    BackHandler { if (step > 0) step-- else exit() }
+    // Without a phone there's no way out but finishing; back on the first step leaves the app.
+    val exit = { if (!isNew) go(Screen.Home) }
+    BackHandler(enabled = step > 0 || !isNew) { if (step > 0) step-- else exit() }
 
     @Composable
     fun input(key: String, placeholder: String, icon: String? = null, type: KeyboardType = KeyboardType.Text, lines: Int = 1, unit: String? = null) =
@@ -104,7 +105,11 @@ fun ProfileScreen(go: (Screen) -> Unit) {
             Store.me = Api.get("/api/me")
         }) {
             Guardian.registerForPush(context)
-            go(if (isNew) Screen.HomeNotice("Profile saved. Allow notifications so the alarm can reach you.") else Screen.HomeNotice("Profile saved."))
+            go(when {
+                isNew && Store.role != "explorer" -> Screen.Board
+                isNew -> Screen.HomeNotice("Profile saved. Allow notifications so the alarm can reach you.")
+                else -> Screen.HomeNotice("Profile saved.")
+            })
         }.invokeOnCompletion {
             // The server turned down something from the first step, like the email address: show it there.
             if (work.error?.contains("email", ignoreCase = true) == true || work.error?.contains("required") == true) step = 0

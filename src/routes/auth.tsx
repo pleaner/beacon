@@ -11,10 +11,11 @@ import { Welcome } from '../views/explorer'
 
 export const isOps = (role: string) => role === 'operator' || role === 'admin'
 
-// A new explorer has no phone yet; the profile form asks for it before anything else.
-export const needsProfile = (u: User) => u.role === 'explorer' && !u.phone
+// Signing in makes the account with no phone, and an explorer promoted to operator may still have none.
+// Nobody gets past the profile form until they give a number.
+export const needsProfile = (u: User) => !u.phone
 
-export const homeFor = (u: User) => (isOps(u.role) ? '/board' : needsProfile(u) ? '/profile' : '/')
+export const homeFor = (u: User) => (needsProfile(u) ? '/profile' : isOps(u.role) ? '/board' : '/')
 
 // The account for a Google or Apple identity: the one already linked to it, else the one with the same verified
 // email (operators are added by email, and explorers gave theirs in the profile), else a new explorer.

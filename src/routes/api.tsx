@@ -14,7 +14,7 @@ import { addToRoster, isOnCall, moveInRoster, onCallState, removeFromRoster, set
 import { FCM_PREFIX, getSender, pushToRoles, pushToUser } from '../lib/push'
 import { adminSetStatus, ADMIN_STATUSES, cancelHelp, extendTrip, getOpenTrip, getTrip, listCompanions, listOpenTrips, listPets, soundSiren, tripLine, tripPlace, markBack, markHelpAlerted, operatorClose, parseReturnBy, requestHelp, setPets, setStartPlace, startTrip, TripOpenError, type Trip } from '../lib/trips'
 import { newTripPage, profilePage } from './explorer'
-import { needsProfile, userFor } from './auth'
+import { isOps, needsProfile, userFor } from './auth'
 
 export const api = new Hono<AppEnv>()
 
@@ -90,7 +90,7 @@ api.post('/profile', async (c) => {
     ...('description' in body ? { description: str(body, 'description') } : {}),
   }
   // The first save after signing up goes on to the welcome tips; later saves just say "saved".
-  const next = needsProfile(user) ? '/?welcome=1' : '/?saved=1'
+  const next = !needsProfile(user) ? '/?saved=1' : isOps(user.role) ? '/board' : '/?welcome=1'
   try {
     const photo_key = await savePhoto(c.env.PHOTOS, user.id, body.photo)
     await updateUser(c.env.DB, user.id, photo_key ? { ...fields, photo_key } : fields)
