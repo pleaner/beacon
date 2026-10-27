@@ -269,3 +269,20 @@ describe('the standard header', () => {
     for (const p of ['/board', '/admin?tab=users', '/']) expect(await page(p, a.token)).toEqual({ header: true, menu: true, admin: true, oldBar: false })
   })
 })
+
+describe('an operator with no phone', () => {
+  it('lands on the profile form, not the board, and goes on to the board once saved', async () => {
+    const o = await makeOperator({ phone: '' })
+    const cookie = cookieFor(o.token)
+    let res = await exports.default.fetch(`${BASE}/board`, { headers: { cookie }, redirect: 'manual' })
+    expect(res.headers.get('location')).toBe('/profile')
+    res = await exports.default.fetch(`${BASE}/login`, { headers: { cookie }, redirect: 'manual' })
+    expect(res.headers.get('location')).toBe('/profile')
+    res = await exports.default.fetch(`${BASE}/api/profile`, {
+      method: 'POST', headers: { cookie }, body: form({ name: 'Guy', phone: '+27821234567', email: 'guy@example.com' }), redirect: 'manual',
+    })
+    expect(res.headers.get('location')).toBe('/board')
+    res = await exports.default.fetch(`${BASE}/board`, { headers: { cookie }, redirect: 'manual' })
+    expect(res.status).toBe(200)
+  })
+})
